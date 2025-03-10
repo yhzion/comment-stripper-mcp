@@ -1,0 +1,1711 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+utils/
+  auth.js
+  commentStripper.js
+  config.js
+  errorHandler.js
+  fileProcessor.js
+  fileUtils.js
+  logger.js
+  streamProcessor.js
+index.js
+
+================================================================
+Files
+================================================================
+
+================
+File: utils/auth.js
+================
+/**
+ * Authentication utilities for the comment-stripper-mcp
+ * Provides API key validation and middleware for securing API endpoints
+ */
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { ValidationError } from './errorHandler.js';
+/**
+ * Validates an API key against the configured API keys
+ * @param {string} apiKey - The API key to validate
+ * @returns {AuthResult} Authentication result
+ */
+export function validateApiKey(apiKey) {
+    /**
+     * If authentication is disabled, always return authenticated
+     * @see config.AUTH_ENABLED
+     */
+    if (!config.AUTH_ENABLED) {
+        return { authenticated: true };
+    }
+    /**
+     * Check if API key is provided
+     * @throws {AuthResult} If API key is not provided
+     */
+    if (!apiKey) {
+        return {
+            authenticated: false,
+            message: 'API key is required'
+        };
+    }
+    /**
+     * Get API keys from configuration
+     * @see config.API_KEYS
+     */
+    const apiKeys = config.API_KEYS.split(',').map(key => key.trim());
+    /**
+     * Check if the provided API key exists in the configured keys
+     * @throws {AuthResult} If API key is invalid
+     */
+    if (!apiKeys.includes(apiKey)) {
+        logger.warn('Invalid API key attempt', { apiKey: apiKey.substring(0, 4) + '***' });
+        return {
+            authenticated: false,
+            message: 'Invalid API key'
+        };
+    }
+    /**
+     * For a more sophisticated implementation, you could look up user details
+     * from a database or other source based on the API key
+     */
+    return {
+        authenticated: true,
+        user: {
+            id: 'user-1', // In a real implementation, this would be looked up
+            name: 'API User',
+            role: 'user'
+        }
+    };
+}
+/**
+ * Authentication middleware for MCP server requests
+ * @param {T} params - Request parameters
+ * @param {Record<string, string>} headers - Request headers
+ * @returns {T} Validated parameters or throws an error
+ * @template T
+ */
+export function authMiddleware(params, headers) {
+    /**
+     * If authentication is disabled, pass through
+     * @see config.AUTH_ENABLED
+     */
+    if (!config.AUTH_ENABLED) {
+        return params;
+    }
+    /**
+     * Extract API key from headers
+     * @see headers['x-api-key'] or headers['authorization']
+     */
+    const apiKey = headers['x-api-key'] || headers['authorization']?.replace('Bearer ', '');
+    /**
+     * Validate the API key
+     * @see validateApiKey
+     */
+    const authResult = validateApiKey(apiKey);
+    /**
+     * If not authenticated, throw an error
+     * @throws {ValidationError} If authentication fails
+     */
+    if (!authResult.authenticated) {
+        throw new ValidationError(authResult.message || 'Authentication failed');
+    }
+    /**
+     * Return the original parameters if authentication succeeds
+     */
+    return params;
+}
+
+================
+File: utils/commentStripper.js
+================
+/**
+ * Utility functions for stripping comments from code files
+ */
+// Cache regex patterns for better performance
+const REGEX_CACHE = {
+    // JavaScript/TypeScript patterns
+    js: {
+        stringLiteral: /(['`"])(?:(?!\1)[^\\]|\\[\s\S])*?\1/g,
+        regexLiteral: /\/(?:[^\\*\/\n]|\\[\s\S])+?\/(?:[gimuy]+)?/g,
+        multiLineComment: /\/\*[\s\S]*?\*\//g,
+        singleLineComment: /\/\/.*$/gm
+    },
+    // Python patterns
+    py: {
+        stringLiteral: /(['"])(?:(?!\1)[^\\]|\\[\s\S])*?\1/g,
+        singleLineComment: /#.*$/gm
+    },
+    // HTML patterns
+    html: {
+        comment: /<!--[\s\S]*?-->/g
+    },
+    // CSS patterns
+    css: {
+        comment: /\/\*[\s\S]*?\*\//g
+    },
+    // Ruby patterns
+    ruby: {
+        stringLiteral: /(['"])(?:(?!\1)[^\\]|\\[\s\S])*?\1/g,
+        heredoc: /<<[-~]?(['"]?)\w+\1.*?\n.*?\n\s*\w+/gs,
+        multiLineComment: /=begin\s[\s\S]*?=end/g,
+        singleLineComment: /#.*$/gm
+    },
+    // PHP patterns
+    php: {
+        stringLiteral: /(['"])(?:(?!\1)[^\\]|\\[\s\S])*?\1/g,
+        multiLineComment: /\/\*[\s\S]*?\*\//g,
+        singleLineComment: /(?:\/\/|#).*$/gm
+    }
+};
+/**
+ * Optimized function to replace literals with placeholders and store them for later restoration.
+ * Uses a Map for faster lookups and a more efficient placeholder strategy.
+ *
+ * @param code - The source code to process
+ * @param pattern - The regex pattern to match literals
+ * @param literalMap - Map to store literals
+ * @param prefix - Prefix for the placeholder
+ * @returns Processed code with literals replaced by placeholders
+ */
+function replaceLiterals(code, pattern, literalMap, prefix) {
+    let lastIndex = 0;
+    let match;
+    let result = '';
+    // Reset the regex pattern's lastIndex
+    pattern.lastIndex = 0;
+    // Use exec for better performance with large strings
+    while ((match = pattern.exec(code)) !== null) {
+        // Add the text between the last match and this match
+        result += code.substring(lastIndex, match.index);
+        // Create a unique placeholder
+        const placeholder = `__${prefix}_${literalMap.size}__`;
+        // Store the literal in the map
+        literalMap.set(placeholder, match[0]);
+        // Add the placeholder to the result
+        result += placeholder;
+        // Update lastIndex
+        lastIndex = pattern.lastIndex;
+    }
+    // Add the remaining text
+    result += code.substring(lastIndex);
+    return result;
+}
+/**
+ * Restores literals from placeholders in a more efficient way.
+ *
+ * @param code - The processed code with placeholders
+ * @param literalMap - Map containing the literals
+ * @returns Code with literals restored
+ */
+function restoreLiterals(code, literalMap) {
+    if (literalMap.size === 0)
+        return code;
+    let result = code;
+    // Use a single regex replacement for all placeholders
+    const placeholderPattern = /__[A-Z]+_\d+__/g;
+    result = result.replace(placeholderPattern, (match) => {
+        return literalMap.get(match) || match;
+    });
+    return result;
+}
+/**
+ * Removes JavaScript/TypeScript comments from a string.
+ * Optimized for performance with large files.
+ *
+ * @param code - The source code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripJsComments(code) {
+    if (!code)
+        return '';
+    // Use a Map for faster lookups when restoring literals
+    const literalMap = new Map();
+    // Process string literals
+    let processedCode = replaceLiterals(code, REGEX_CACHE.js.stringLiteral, literalMap, 'STR');
+    // Process regex literals
+    processedCode = replaceLiterals(processedCode, REGEX_CACHE.js.regexLiteral, literalMap, 'REGEX');
+    // Remove multi-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.js.multiLineComment, '');
+    // Remove single-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.js.singleLineComment, '');
+    // Restore all literals in one pass
+    return restoreLiterals(processedCode, literalMap);
+}
+/**
+ * Removes Vue template comments from a string.
+ * Handles HTML-style comments <!-- ... -->
+ *
+ * @param code - The Vue template code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripVueComments(code) {
+    // First strip JS comments from script sections
+    const jsCommentStripped = stripJsComments(code);
+    // Then strip HTML comments
+    return jsCommentStripped.replace(REGEX_CACHE.html.comment, '');
+}
+/**
+ * Removes HTML comments from a string.
+ *
+ * @param code - The HTML code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripHtmlComments(code) {
+    return code.replace(REGEX_CACHE.html.comment, '');
+}
+/**
+ * Removes CSS comments from a string.
+ *
+ * @param code - The CSS code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripCssComments(code) {
+    return code.replace(REGEX_CACHE.css.comment, '');
+}
+/**
+ * Removes Python comments from a string.
+ * Optimized for performance with large files.
+ *
+ * @param code - The Python code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripPythonComments(code) {
+    if (!code)
+        return '';
+    // Use a Map for faster lookups when restoring literals
+    const literalMap = new Map();
+    // Process string literals (including triple-quoted strings)
+    let processedCode = replaceLiterals(code, REGEX_CACHE.py.stringLiteral, literalMap, 'STR');
+    // Remove single-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.py.singleLineComment, '');
+    // Restore all literals in one pass
+    return restoreLiterals(processedCode, literalMap);
+}
+/**
+ * Removes Java/C#/C++ comments from a string.
+ *
+ * @param code - The source code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripCStyleComments(code) {
+    // Since Java/C#/C++ use the same comment syntax as JavaScript,
+    // we can reuse the JS comment stripping logic
+    return stripJsComments(code);
+}
+/**
+ * Removes Ruby comments from a string.
+ *
+ * @param code - The Ruby code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripRubyComments(code) {
+    if (!code)
+        return '';
+    // Use a Map for faster lookups when restoring literals
+    const literalMap = new Map();
+    // Process string literals
+    let processedCode = replaceLiterals(code, REGEX_CACHE.ruby.stringLiteral, literalMap, 'STR');
+    // Process heredoc
+    processedCode = replaceLiterals(processedCode, REGEX_CACHE.ruby.heredoc, literalMap, 'HEREDOC');
+    // Remove multi-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.ruby.multiLineComment, '');
+    // Remove single-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.ruby.singleLineComment, '');
+    // Restore all literals in one pass
+    return restoreLiterals(processedCode, literalMap);
+}
+/**
+ * Removes PHP comments from a string.
+ *
+ * @param code - The PHP code to process.
+ * @returns The code with all comments removed.
+ */
+export function stripPhpComments(code) {
+    if (!code)
+        return '';
+    // Use a Map for faster lookups when restoring literals
+    const literalMap = new Map();
+    // Process string literals
+    let processedCode = replaceLiterals(code, REGEX_CACHE.php.stringLiteral, literalMap, 'STR');
+    // Remove multi-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.php.multiLineComment, '');
+    // Remove single-line comments
+    processedCode = processedCode.replace(REGEX_CACHE.php.singleLineComment, '');
+    // Restore all literals in one pass
+    return restoreLiterals(processedCode, literalMap);
+}
+// Cache for file extension mapping to improve performance
+const FILE_TYPE_CACHE = new Map();
+/**
+ * Determines the appropriate comment stripping function based on file extension.
+ * Uses caching for better performance.
+ *
+ * @param filePath - Path to the file.
+ * @param code - The source code to process.
+ * @returns The code with comments removed.
+ */
+export function stripCommentsByFileType(filePath, code) {
+    if (!code)
+        return '';
+    const extension = filePath.split('.').pop()?.toLowerCase() || '';
+    // Check if we have a cached function for this extension
+    let stripFn = FILE_TYPE_CACHE.get(extension);
+    if (!stripFn) {
+        // Determine the appropriate function and cache it
+        switch (extension) {
+            case 'js':
+            case 'ts':
+            case 'jsx':
+            case 'tsx':
+            case 'java':
+            case 'c':
+            case 'cpp':
+            case 'cs':
+                stripFn = stripJsComments;
+                break;
+            case 'vue':
+                stripFn = stripVueComments;
+                break;
+            case 'html':
+            case 'htm':
+                stripFn = stripHtmlComments;
+                break;
+            case 'css':
+            case 'scss':
+            case 'less':
+                stripFn = stripCssComments;
+                break;
+            case 'py':
+                stripFn = stripPythonComments;
+                break;
+            case 'rb':
+                stripFn = stripRubyComments;
+                break;
+            case 'php':
+                stripFn = stripPhpComments;
+                break;
+            default:
+                stripFn = stripJsComments;
+        }
+        // Cache the function for future use
+        FILE_TYPE_CACHE.set(extension, stripFn);
+    }
+    return stripFn(code);
+}
+/**
+ * Main function to strip comments from code.
+ *
+ * @param code - The source code to process.
+ * @param fileType - Optional file extension to determine comment style.
+ * @returns The code with all comments removed.
+ */
+export function stripComments(code, fileType) {
+    if (!code)
+        return '';
+    if (fileType) {
+        // Create a fake file path to reuse the existing function
+        return stripCommentsByFileType(`file.${fileType.toLowerCase()}`, code);
+    }
+    // Default to JS comment stripping if no file type is specified
+    return stripJsComments(code);
+}
+
+================
+File: utils/config.js
+================
+/**
+ * Configuration management for the comment-stripper-mcp
+ * Handles loading and validating configuration from environment variables
+ */
+import { z } from 'zod';
+import { logger, LogLevel } from './logger.js';
+import os from 'os';
+// Define the configuration schema using Zod
+const configSchema = z.object({
+    // Server configuration
+    PORT: z.coerce.number().int().positive().default(3000),
+    HOST: z.string().default('127.0.0.1'),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    // Logging configuration
+    LOG_LEVEL: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(4)
+        .default(LogLevel.INFO)
+        .transform(val => val),
+    LOG_TO_FILE: z.coerce.boolean().default(false),
+    LOG_DIR: z.string().default('logs'),
+    LOG_FILE_NAME: z.string().optional(),
+    // Performance configuration
+    CHUNK_SIZE: z.coerce.number().int().positive().default(1024 * 1024), // 1MB default chunk size
+    MAX_WORKERS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(Math.max(1, Math.floor(os.cpus().length / 2))),
+    MEMORY_LIMIT: z.coerce.number().int().positive().default(1024 * 1024 * 512), // 512MB default
+    // Cache configuration
+    ENABLE_CACHE: z.coerce.boolean().default(true),
+    CACHE_TTL: z.coerce.number().int().positive().default(3600), // 1 hour default
+    // Security configuration
+    TIMEOUT: z.coerce.number().int().positive().default(30000), // 30 seconds default
+    // Authentication configuration
+    AUTH_ENABLED: z.coerce.boolean().default(false),
+    API_KEYS: z.string().default(''),
+    AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(100), // Requests per minute
+});
+/**
+ * Load configuration from environment variables
+ * @returns Validated configuration object
+ */
+export function loadConfig() {
+    try {
+        // Parse and validate configuration
+        const config = configSchema.parse(process.env);
+        // Configure logger with loaded settings
+        logger.configure({
+            logLevel: config.LOG_LEVEL,
+            logToFile: config.LOG_TO_FILE,
+            logDir: config.LOG_DIR,
+            logFileName: config.LOG_FILE_NAME || `comment-stripper-${new Date().toISOString().split('T')[0]}.log`
+        });
+        // Log configuration in development mode
+        if (config.NODE_ENV === 'development') {
+            logger.debug('Loaded configuration', {
+                ...config,
+                // Omit any sensitive values if they were to be added in the future
+                API_KEYS: config.API_KEYS ? '********' : ''
+            });
+        }
+        return config;
+    }
+    catch (error) {
+        // Handle validation errors
+        if (error instanceof z.ZodError) {
+            console.error('Configuration validation failed:', JSON.stringify(error.format(), null, 2));
+            process.exit(1);
+        }
+        // Handle other errors
+        console.error('Failed to load configuration:', error);
+        process.exit(1);
+    }
+}
+// Export the default configuration
+export const config = loadConfig();
+
+================
+File: utils/errorHandler.js
+================
+/**
+ * Error handling utilities for the comment-stripper-mcp
+ * Provides standardized error types and handling mechanisms
+ */
+import { logger } from './logger.js';
+/**
+ * Base error class for the application
+ */
+export class AppError extends Error {
+    code;
+    statusCode;
+    isOperational;
+    context;
+    constructor({ message, code = 'INTERNAL_ERROR', statusCode = 500, isOperational = true, context = {} }) {
+        super(message);
+        this.name = this.constructor.name;
+        this.code = code;
+        this.statusCode = statusCode;
+        this.isOperational = isOperational;
+        this.context = context;
+        // Capture stack trace
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+/**
+ * Error for invalid input parameters
+ */
+export class ValidationError extends AppError {
+    constructor(message, context) {
+        super({
+            message,
+            code: 'VALIDATION_ERROR',
+            statusCode: 400,
+            isOperational: true,
+            context
+        });
+    }
+}
+/**
+ * Error for file system operations
+ */
+export class FileSystemError extends AppError {
+    constructor(message, context) {
+        super({
+            message,
+            code: 'FILE_SYSTEM_ERROR',
+            statusCode: 500,
+            isOperational: true,
+            context
+        });
+    }
+}
+/**
+ * Error for unsupported file types
+ */
+export class UnsupportedFileTypeError extends AppError {
+    constructor(fileType, context) {
+        super({
+            message: `Unsupported file type: ${fileType}`,
+            code: 'UNSUPPORTED_FILE_TYPE',
+            statusCode: 400,
+            isOperational: true,
+            context: { fileType, ...context }
+        });
+    }
+}
+/**
+ * Error for processing failures
+ */
+export class ProcessingError extends AppError {
+    constructor(message, context) {
+        super({
+            message,
+            code: 'PROCESSING_ERROR',
+            statusCode: 500,
+            isOperational: true,
+            context
+        });
+    }
+}
+/**
+ * Handles an error by logging it and determining if it's operational
+ * @param error - The error to handle
+ * @returns Formatted error response
+ */
+export function handleError(error) {
+    // Convert unknown errors to AppError format
+    const appError = convertToAppError(error);
+    // Log the error
+    if (appError.isOperational) {
+        logger.warn(`Operational error: ${appError.message}`, {
+            code: appError.code,
+            stack: appError.stack,
+            context: appError.context
+        });
+    }
+    else {
+        logger.error(`Unhandled error: ${appError.message}`, {
+            code: appError.code,
+            stack: appError.stack,
+            context: appError.context
+        });
+    }
+    // Return a standardized error response
+    return {
+        success: false,
+        error: appError.message,
+        code: appError.code,
+        details: appError.context
+    };
+}
+/**
+ * Converts any error to an AppError
+ * @param error - The error to convert
+ * @returns AppError instance
+ */
+function convertToAppError(error) {
+    if (error instanceof AppError) {
+        return error;
+    }
+    if (error instanceof Error) {
+        return new AppError({
+            message: error.message,
+            isOperational: false,
+            context: { originalError: error.name, stack: error.stack }
+        });
+    }
+    return new AppError({
+        message: String(error),
+        isOperational: false,
+        context: { originalError: error }
+    });
+}
+/**
+ * Wraps an async function with error handling
+ * @param fn - The async function to wrap
+ * @returns Wrapped function that handles errors
+ */
+export function withErrorHandling(fn) {
+    return async (...args) => {
+        try {
+            return await fn(...args);
+        }
+        catch (error) {
+            return handleError(error);
+        }
+    };
+}
+
+================
+File: utils/fileProcessor.js
+================
+/**
+ * Utility functions for processing files and directories
+ */
+import fs from 'fs/promises';
+import path from 'path';
+import { stripCommentsByFileType } from './commentStripper.js';
+import { logger } from './logger.js';
+import { FileSystemError, ProcessingError, UnsupportedFileTypeError } from './errorHandler.js';
+import { processLargeFile, shouldUseStreaming } from './streamProcessor.js';
+import { config } from './config.js';
+/**
+ * Supported file extensions for comment stripping
+ */
+export const SUPPORTED_EXTENSIONS = [
+    // JavaScript/TypeScript
+    'js', 'ts', 'jsx', 'tsx',
+    // Web templates
+    'vue', 'html', 'htm',
+    // CSS
+    'css', 'scss', 'less',
+    // Python
+    'py',
+    // C-style languages
+    'java', 'c', 'cpp', 'cs',
+    // Ruby
+    'rb',
+    // PHP
+    'php'
+];
+/**
+ * Default progress tracker implementation that does nothing
+ */
+const defaultProgressTracker = {
+    total: 0,
+    processed: 0,
+    updateProgress: () => { }
+};
+/**
+ * Processes a single file to strip comments
+ *
+ * @param filePath - Path to the file to process
+ * @returns Object containing original and stripped code
+ */
+export async function processFile(filePath) {
+    try {
+        logger.debug(`Processing file: ${filePath}`);
+        // Check if file exists
+        try {
+            await fs.access(filePath, fs.constants.R_OK);
+        }
+        catch (error) {
+            logger.error(`File not accessible: ${filePath}`, { error });
+            throw new FileSystemError(`File not accessible: ${filePath}`);
+        }
+        // Check if file type is supported
+        const extension = path.extname(filePath).slice(1).toLowerCase();
+        if (!SUPPORTED_EXTENSIONS.includes(extension)) {
+            logger.warn(`Unsupported file type: ${extension}`, { filePath });
+            throw new UnsupportedFileTypeError(extension, { filePath });
+        }
+        // Check if we should use streaming for large files
+        if (await shouldUseStreaming(filePath)) {
+            logger.info(`Using stream processing for large file: ${filePath}`);
+            return await processLargeFile(filePath);
+        }
+        // Process normally for smaller files
+        const original = await fs.readFile(filePath, 'utf-8');
+        const stripped = stripCommentsByFileType(filePath, original);
+        logger.debug(`Successfully processed file: ${filePath}`);
+        return { original, stripped };
+    }
+    catch (error) {
+        if (error instanceof FileSystemError || error instanceof UnsupportedFileTypeError) {
+            throw error; // Re-throw known errors
+        }
+        logger.error(`Error processing file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new ProcessingError(`Error processing file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+/**
+ * Checks if a file should be processed based on its extension
+ *
+ * @param filePath - Path to the file
+ * @param fileTypes - Array of file extensions to process
+ * @returns Boolean indicating whether the file should be processed
+ */
+export function shouldProcessFile(filePath, fileTypes = SUPPORTED_EXTENSIONS) {
+    const extension = path.extname(filePath).slice(1).toLowerCase();
+    return fileTypes.includes(extension);
+}
+/**
+ * Counts the number of files to be processed in a directory
+ *
+ * @param directoryPath - Path to the directory
+ * @param recursive - Whether to count files in subdirectories
+ * @param fileTypes - Array of file extensions to count
+ * @returns Number of files to be processed
+ */
+async function countFiles(directoryPath, recursive = true, fileTypes = SUPPORTED_EXTENSIONS) {
+    let count = 0;
+    try {
+        const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+        for (const entry of entries) {
+            const entryPath = path.join(directoryPath, entry.name);
+            if (entry.isDirectory() && recursive) {
+                // Recursively count files in subdirectories
+                count += await countFiles(entryPath, recursive, fileTypes);
+            }
+            else if (entry.isFile() && shouldProcessFile(entryPath, fileTypes)) {
+                // Count this file
+                count++;
+            }
+        }
+        return count;
+    }
+    catch (error) {
+        logger.error(`Error counting files in ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new FileSystemError(`Error counting files in ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+/**
+ * Recursively processes all files in a directory
+ *
+ * @param directoryPath - Path to the directory to process
+ * @param recursive - Whether to process subdirectories recursively
+ * @param fileTypes - Array of file extensions to process
+ * @param progressTracker - Optional progress tracker for large directories
+ * @returns Object containing results for each processed file
+ */
+export async function processDirectory(directoryPath, recursive = true, fileTypes = SUPPORTED_EXTENSIONS, progressTracker = defaultProgressTracker) {
+    const results = {};
+    try {
+        logger.info(`Processing directory: ${directoryPath}`, { recursive, fileTypes });
+        // Check if directory exists
+        try {
+            await fs.access(directoryPath, fs.constants.R_OK);
+        }
+        catch (error) {
+            logger.error(`Directory not accessible: ${directoryPath}`, { error });
+            throw new FileSystemError(`Directory not accessible: ${directoryPath}`);
+        }
+        // Count total files for progress tracking if not already set
+        if (progressTracker.total === 0) {
+            logger.debug(`Counting files in directory: ${directoryPath}`);
+            progressTracker.total = await countFiles(directoryPath, recursive, fileTypes);
+            progressTracker.processed = 0;
+            progressTracker.updateProgress(0, progressTracker.total);
+            logger.info(`Found ${progressTracker.total} files to process in ${directoryPath}`);
+        }
+        const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+        // Process in batches for better performance with large directories
+        const batchSize = config.MAX_WORKERS;
+        const batches = [];
+        let currentBatch = [];
+        // Group entries into batches
+        for (const entry of entries) {
+            const entryPath = path.join(directoryPath, entry.name);
+            if (entry.isDirectory() && recursive) {
+                // Process subdirectories immediately (not in batches)
+                const subResults = await processDirectory(entryPath, recursive, fileTypes, progressTracker);
+                Object.assign(results, subResults);
+            }
+            else if (entry.isFile() && shouldProcessFile(entryPath, fileTypes)) {
+                // Add file to current batch
+                currentBatch.push(entryPath);
+                // When batch is full, add to batches array and create a new batch
+                if (currentBatch.length >= batchSize) {
+                    batches.push([...currentBatch]);
+                    currentBatch = [];
+                }
+            }
+        }
+        // Add any remaining files to batches
+        if (currentBatch.length > 0) {
+            batches.push(currentBatch);
+        }
+        // Process batches in sequence
+        for (const batch of batches) {
+            // Process files in batch concurrently
+            const batchResults = await Promise.all(batch.map(async (filePath) => {
+                try {
+                    const result = await processFile(filePath);
+                    return { filePath, result };
+                }
+                catch (error) {
+                    logger.warn(`Skipping file ${filePath} due to error: ${error instanceof Error ? error.message : String(error)}`);
+                    return { filePath, error };
+                }
+                finally {
+                    // Update progress regardless of success/failure
+                    progressTracker.processed++;
+                    progressTracker.updateProgress(progressTracker.processed, progressTracker.total);
+                }
+            }));
+            // Add successful results to the results object
+            for (const { filePath, result, error } of batchResults) {
+                if (result && !error) {
+                    results[filePath] = result;
+                }
+            }
+        }
+        logger.info(`Completed processing directory: ${directoryPath}`, {
+            totalFiles: progressTracker.total,
+            processedFiles: progressTracker.processed,
+            successfulFiles: Object.keys(results).length
+        });
+        return results;
+    }
+    catch (error) {
+        if (error instanceof FileSystemError) {
+            throw error; // Re-throw known errors
+        }
+        logger.error(`Error processing directory ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new FileSystemError(`Error processing directory ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+================
+File: utils/fileUtils.js
+================
+/**
+ * File utility functions for the comment-stripper-mcp
+ */
+import fs from 'fs';
+/**
+ * Creates a directory if it doesn't exist
+ * @param dirPath - Path to the directory to create
+ */
+export function createLogDir(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+}
+/**
+ * Checks if a path exists and is accessible
+ * @param filePath - Path to check
+ * @returns Boolean indicating if the path exists and is accessible
+ */
+export async function pathExists(filePath) {
+    try {
+        await fs.promises.access(filePath, fs.constants.F_OK);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Gets file stats with error handling
+ * @param filePath - Path to the file
+ * @returns File stats or null if file doesn't exist
+ */
+export async function getFileStats(filePath) {
+    try {
+        return await fs.promises.stat(filePath);
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Safely reads a file with error handling
+ * @param filePath - Path to the file
+ * @param encoding - File encoding (default: utf-8)
+ * @returns File contents or null if file doesn't exist or can't be read
+ */
+export async function safeReadFile(filePath, encoding = 'utf-8') {
+    try {
+        return await fs.promises.readFile(filePath, { encoding });
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Safely writes to a file with error handling
+ * @param filePath - Path to the file
+ * @param data - Data to write
+ * @param options - Write options
+ * @returns Boolean indicating success
+ */
+export async function safeWriteFile(filePath, data, options) {
+    try {
+        await fs.promises.writeFile(filePath, data, options);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Ensures a directory exists, creating it if necessary
+ * @param dirPath - Path to the directory
+ * @returns Boolean indicating success
+ */
+export async function ensureDir(dirPath) {
+    try {
+        await fs.promises.mkdir(dirPath, { recursive: true });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Gets the size of a file in bytes
+ * @param filePath - Path to the file
+ * @returns File size in bytes or -1 if file doesn't exist
+ */
+export async function getFileSize(filePath) {
+    const stats = await getFileStats(filePath);
+    return stats ? stats.size : -1;
+}
+
+================
+File: utils/logger.js
+================
+/**
+ * Logger utility for the comment-stripper-mcp
+ * Provides standardized logging with different log levels and formatting
+ */
+import fs from 'fs';
+import path from 'path';
+// Log levels enum
+export var LogLevel;
+(function (LogLevel) {
+    LogLevel[LogLevel["ERROR"] = 0] = "ERROR";
+    LogLevel[LogLevel["WARN"] = 1] = "WARN";
+    LogLevel[LogLevel["INFO"] = 2] = "INFO";
+    LogLevel[LogLevel["DEBUG"] = 3] = "DEBUG";
+    LogLevel[LogLevel["TRACE"] = 4] = "TRACE";
+})(LogLevel || (LogLevel = {}));
+// Log level names for output formatting
+const LOG_LEVEL_NAMES = {
+    [LogLevel.ERROR]: 'ERROR',
+    [LogLevel.WARN]: 'WARN',
+    [LogLevel.INFO]: 'INFO',
+    [LogLevel.DEBUG]: 'DEBUG',
+    [LogLevel.TRACE]: 'TRACE'
+};
+// ANSI color codes for console output
+const COLORS = {
+    reset: '\x1b[0m',
+    red: '\x1b[31m',
+    yellow: '\x1b[33m',
+    green: '\x1b[32m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m'
+};
+// Color mapping for log levels
+const LEVEL_COLORS = {
+    [LogLevel.ERROR]: COLORS.red,
+    [LogLevel.WARN]: COLORS.yellow,
+    [LogLevel.INFO]: COLORS.green,
+    [LogLevel.DEBUG]: COLORS.blue,
+    [LogLevel.TRACE]: COLORS.magenta
+};
+/**
+ * Creates a directory if it doesn't exist
+ * @param dirPath - Path to the directory to create
+ */
+function createLogDir(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+}
+/**
+ * Logger class that handles logging to console and file
+ */
+export class Logger {
+    static instance;
+    logLevel;
+    logToFile;
+    logFilePath;
+    logFileStream = null;
+    /**
+     * Private constructor for singleton pattern
+     * @param logLevel - The minimum log level to output
+     * @param logToFile - Whether to log to a file
+     * @param logDir - Directory for log files
+     * @param logFileName - Name of the log file
+     */
+    constructor(logLevel = LogLevel.INFO, logToFile = false, logDir = 'logs', logFileName = `comment-stripper-${new Date().toISOString().split('T')[0]}.log`) {
+        this.logLevel = logLevel;
+        this.logToFile = logToFile;
+        this.logFilePath = path.join(logDir, logFileName);
+        if (this.logToFile) {
+            try {
+                createLogDir(logDir);
+                this.logFileStream = fs.createWriteStream(this.logFilePath, { flags: 'a' });
+            }
+            catch (error) {
+                console.error(`Failed to create log file: ${error instanceof Error ? error.message : String(error)}`);
+                this.logToFile = false;
+            }
+        }
+    }
+    /**
+     * Get the singleton instance of the logger
+     */
+    static getInstance() {
+        if (!Logger.instance) {
+            Logger.instance = new Logger(process.env.LOG_LEVEL ? parseInt(process.env.LOG_LEVEL) : undefined, process.env.LOG_TO_FILE === 'true', process.env.LOG_DIR, process.env.LOG_FILE_NAME);
+        }
+        return Logger.instance;
+    }
+    /**
+     * Configure the logger with new settings
+     */
+    configure({ logLevel, logToFile, logDir, logFileName }) {
+        if (logLevel !== undefined) {
+            this.logLevel = logLevel;
+        }
+        if (logToFile !== undefined && logToFile !== this.logToFile) {
+            this.logToFile = logToFile;
+            // Close existing stream if we're turning off file logging
+            if (!logToFile && this.logFileStream) {
+                this.logFileStream.end();
+                this.logFileStream = null;
+            }
+        }
+        // If we're changing the log file location
+        if (this.logToFile && (logDir || logFileName)) {
+            const newLogDir = logDir || path.dirname(this.logFilePath);
+            const newLogFileName = logFileName || path.basename(this.logFilePath);
+            const newLogFilePath = path.join(newLogDir, newLogFileName);
+            // Only create a new stream if the path has changed
+            if (newLogFilePath !== this.logFilePath) {
+                // Close existing stream
+                if (this.logFileStream) {
+                    this.logFileStream.end();
+                }
+                try {
+                    createLogDir(newLogDir);
+                    this.logFilePath = newLogFilePath;
+                    this.logFileStream = fs.createWriteStream(this.logFilePath, { flags: 'a' });
+                }
+                catch (error) {
+                    console.error(`Failed to create log file: ${error instanceof Error ? error.message : String(error)}`);
+                    this.logToFile = false;
+                }
+            }
+        }
+    }
+    /**
+     * Format a log message with timestamp and level
+     */
+    formatLogMessage(level, message, meta) {
+        const timestamp = new Date().toISOString();
+        const levelName = LOG_LEVEL_NAMES[level];
+        let formattedMessage = `[${timestamp}] [${levelName}] ${message}`;
+        if (meta) {
+            formattedMessage += ` ${JSON.stringify(meta)}`;
+        }
+        return formattedMessage;
+    }
+    /**
+     * Log a message if the level is enabled
+     */
+    log(level, message, meta) {
+        if (level > this.logLevel)
+            return;
+        const formattedMessage = this.formatLogMessage(level, message, meta);
+        // Log to console with colors
+        if (process.stdout.isTTY) {
+            console.log(`${LEVEL_COLORS[level]}${formattedMessage}${COLORS.reset}`);
+        }
+        else {
+            console.log(formattedMessage);
+        }
+        // Log to file if enabled
+        if (this.logToFile && this.logFileStream) {
+            this.logFileStream.write(formattedMessage + '\n');
+        }
+    }
+    /**
+     * Log an error message
+     */
+    error(message, meta) {
+        this.log(LogLevel.ERROR, message, meta);
+    }
+    /**
+     * Log a warning message
+     */
+    warn(message, meta) {
+        this.log(LogLevel.WARN, message, meta);
+    }
+    /**
+     * Log an info message
+     */
+    info(message, meta) {
+        this.log(LogLevel.INFO, message, meta);
+    }
+    /**
+     * Log a debug message
+     */
+    debug(message, meta) {
+        this.log(LogLevel.DEBUG, message, meta);
+    }
+    /**
+     * Log a trace message
+     */
+    trace(message, meta) {
+        this.log(LogLevel.TRACE, message, meta);
+    }
+    /**
+     * Close the logger and any open file streams
+     */
+    close() {
+        if (this.logFileStream) {
+            this.logFileStream.end();
+            this.logFileStream = null;
+        }
+    }
+}
+// Export a default logger instance
+export const logger = Logger.getInstance();
+
+================
+File: utils/streamProcessor.js
+================
+/**
+ * Stream processing utilities for handling large files efficiently
+ * Provides chunked processing to optimize memory usage
+ */
+import fs from 'fs';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
+import { stripCommentsByFileType } from './commentStripper.js';
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { FileSystemError, ProcessingError } from './errorHandler.js';
+/**
+ * ChunkTransform class for processing code in chunks
+ * This allows processing large files without loading the entire file into memory
+ */
+export class CommentStripperTransform extends Transform {
+    buffer = '';
+    filePath;
+    chunkSize;
+    /**
+     * Create a new CommentStripperTransform
+     * @param filePath - Path to the file being processed (for extension detection)
+     * @param chunkSize - Size of chunks to process at once
+     */
+    constructor(filePath, chunkSize = config.CHUNK_SIZE) {
+        super({
+            readableObjectMode: true,
+            writableObjectMode: false
+        });
+        this.filePath = filePath;
+        this.chunkSize = chunkSize;
+    }
+    /**
+     * Process chunks of data
+     * @param chunk - Incoming chunk of data
+     * @param encoding - Encoding of the chunk
+     * @param callback - Callback function
+     */
+    _transform(chunk, encoding, callback) {
+        try {
+            // Convert chunk to string and add to buffer
+            const chunkStr = Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : chunk;
+            this.buffer += chunkStr;
+            // Process complete chunks when buffer exceeds chunk size
+            if (this.buffer.length >= this.chunkSize) {
+                this.processBuffer();
+            }
+            callback();
+        }
+        catch (error) {
+            callback(error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+    /**
+     * Process any remaining data in the buffer
+     * @param callback - Callback function
+     */
+    _flush(callback) {
+        try {
+            if (this.buffer.length > 0) {
+                this.processBuffer(true);
+            }
+            callback();
+        }
+        catch (error) {
+            callback(error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+    /**
+     * Process the current buffer
+     * @param isLast - Whether this is the last chunk
+     */
+    processBuffer(isLast = false) {
+        try {
+            // If this is the last chunk, process the entire remaining buffer
+            if (isLast) {
+                const stripped = stripCommentsByFileType(this.filePath, this.buffer);
+                this.push(stripped);
+                this.buffer = '';
+                return;
+            }
+            // Find a safe boundary to split the buffer (end of line)
+            let boundaryIndex = this.buffer.lastIndexOf('\n', this.chunkSize);
+            if (boundaryIndex === -1) {
+                // If no newline found, use a reasonable position
+                boundaryIndex = Math.max(this.buffer.lastIndexOf(';', this.chunkSize), this.buffer.lastIndexOf('}', this.chunkSize), this.buffer.lastIndexOf('{', this.chunkSize));
+            }
+            // If still no good boundary, just use the chunk size
+            if (boundaryIndex === -1) {
+                boundaryIndex = this.chunkSize;
+            }
+            // Extract the chunk to process
+            const chunkToProcess = this.buffer.substring(0, boundaryIndex + 1);
+            // Process the chunk and push to output
+            const stripped = stripCommentsByFileType(this.filePath, chunkToProcess);
+            this.push(stripped);
+            // Update the buffer to contain only the remaining data
+            this.buffer = this.buffer.substring(boundaryIndex + 1);
+        }
+        catch (error) {
+            logger.error(`Error processing buffer: ${error instanceof Error ? error.message : String(error)}`);
+            throw new ProcessingError(`Failed to process file chunk: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+}
+/**
+ * Process a large file using streams
+ * @param filePath - Path to the file to process
+ * @param outputPath - Path to write the processed output
+ * @returns Promise that resolves when processing is complete
+ */
+export async function processLargeFile(filePath, outputPath) {
+    try {
+        // Create read stream for the input file
+        const readStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+        // Create transform stream for processing
+        const transformStream = new CommentStripperTransform(filePath);
+        // Collect the processed output
+        let strippedContent = '';
+        transformStream.on('data', (chunk) => {
+            strippedContent += chunk;
+        });
+        // Process the file
+        if (outputPath) {
+            // If output path is provided, write directly to file
+            const writeStream = fs.createWriteStream(outputPath, { encoding: 'utf-8' });
+            await pipeline(readStream, transformStream, writeStream);
+        }
+        else {
+            // Otherwise, collect the output in memory
+            await pipeline(readStream, transformStream);
+        }
+        // Read the original content for comparison
+        const original = await fs.promises.readFile(filePath, 'utf-8');
+        return {
+            original,
+            stripped: strippedContent
+        };
+    }
+    catch (error) {
+        logger.error(`Error processing large file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+        throw new FileSystemError(`Failed to process large file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+/**
+ * Determines if a file should be processed using streaming based on its size
+ * @param filePath - Path to the file
+ * @returns Promise that resolves to a boolean indicating if streaming should be used
+ */
+export async function shouldUseStreaming(filePath) {
+    try {
+        const stats = await fs.promises.stat(filePath);
+        // Use streaming for files larger than the configured memory limit
+        return stats.size > config.MEMORY_LIMIT;
+    }
+    catch (error) {
+        logger.warn(`Error checking file size for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+    }
+}
+
+================
+File: index.js
+================
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { stripComments } from "./utils/commentStripper.js";
+import { processFile, processDirectory, SUPPORTED_EXTENSIONS } from "./utils/fileProcessor.js";
+import { logger } from "./utils/logger.js";
+import { config } from "./utils/config.js";
+import { handleError, ValidationError } from "./utils/errorHandler.js";
+import { authMiddleware } from "./utils/auth.js";
+// Add more detailed error logging
+console.error("Starting MCP server initialization with detailed logging...");
+console.error(`Node.js version: ${process.version}`);
+console.error(`Current working directory: ${process.cwd()}`);
+console.error(`Environment: ${process.env.NODE_ENV || 'not set'}`);
+console.error(`Process ID: ${process.pid}`);
+console.error(`Platform: ${process.platform}`);
+console.error(`Architecture: ${process.arch}`);
+console.error(`Command line arguments: ${process.argv.join(' ')}`);
+// Check if stdin/stdout are available
+console.error(`stdin isTTY: ${process.stdin.isTTY}`);
+console.error(`stdout isTTY: ${process.stdout.isTTY}`);
+console.error(`stderr isTTY: ${process.stderr.isTTY}`);
+// Check if we're running in a pipe
+console.error(`stdin is a pipe: ${!process.stdin.isTTY}`);
+console.error(`stdout is a pipe: ${!process.stdout.isTTY}`);
+// Ensure the process doesn't exit prematurely
+process.stdin.resume();
+// Set up error handlers early
+process.on('uncaughtException', (error) => {
+    console.error("Uncaught exception:", error);
+    logger.error("Uncaught exception", { error: error.message, stack: error.stack });
+    // Don't exit the process on uncaught exceptions
+});
+process.on('unhandledRejection', (reason) => {
+    console.error("Unhandled promise rejection:", reason);
+    logger.error("Unhandled promise rejection", { reason });
+    // Don't exit the process on unhandled rejections
+});
+// Handle process termination gracefully
+process.on('SIGINT', () => {
+    console.error("Received SIGINT signal, shutting down...");
+    logger.info("Server shutting down");
+    logger.close();
+    process.exit(0);
+});
+process.on('SIGTERM', () => {
+    console.error("Received SIGTERM signal, shutting down...");
+    logger.info("Server shutting down");
+    logger.close();
+    process.exit(0);
+});
+try {
+    console.error("Importing dependencies...");
+    console.error("Dependencies imported successfully.");
+    console.error("Defining schemas and creating server instance...");
+    // Define the request schema for the strip-comments endpoint
+    const stripCommentsSchema = z.object({
+        text: z.string().optional(),
+        filePath: z.string().optional(),
+        directoryPath: z.string().optional(),
+        recursive: z.boolean().optional().default(true),
+        fileTypes: z.array(z.string()).optional().default(SUPPORTED_EXTENSIONS),
+        trackProgress: z.boolean().optional().default(false)
+    }).refine(data => {
+        // Ensure at least one of text, filePath, or directoryPath is provided
+        return data.text !== undefined || data.filePath !== undefined || data.directoryPath !== undefined;
+    }, {
+        message: "At least one of 'text', 'filePath', or 'directoryPath' must be provided"
+    });
+    // Create a map to store progress information for directory processing
+    const progressMap = new Map();
+    console.error("Creating MCP server instance...");
+    // Create the MCP server
+    const server = new McpServer({
+        name: "comment-stripper-mcp",
+        version: "1.0.0",
+        methods: {
+            "/api/strip-comments": {
+                description: "Strips comments from code files",
+                parameters: stripCommentsSchema,
+                handler: async (params, context) => {
+                    try {
+                        // Apply authentication middleware if enabled
+                        try {
+                            params = authMiddleware(params, context.headers);
+                        }
+                        catch (authError) {
+                            logger.error("Authentication failed", { error: authError.message });
+                            return {
+                                success: false,
+                                error: {
+                                    code: 401,
+                                    message: "Authentication failed",
+                                    details: authError.message
+                                }
+                            };
+                        }
+                        logger.info("Processing strip-comments request", {
+                            hasText: params.text !== undefined,
+                            filePath: params.filePath,
+                            directoryPath: params.directoryPath,
+                            recursive: params.recursive,
+                            fileTypes: params.fileTypes?.length,
+                            trackProgress: params.trackProgress
+                        });
+                        // Process text input
+                        if (params.text !== undefined) {
+                            logger.debug("Processing text input", { textLength: params.text.length });
+                            const stripped = stripComments(params.text);
+                            logger.debug("Text processing complete", {
+                                originalLength: params.text.length,
+                                strippedLength: stripped.length
+                            });
+                            return {
+                                success: true,
+                                data: {
+                                    original: params.text,
+                                    stripped
+                                }
+                            };
+                        }
+                        // Process single file
+                        if (params.filePath !== undefined) {
+                            logger.info(`Processing file: ${params.filePath}`);
+                            const result = await processFile(params.filePath);
+                            logger.info(`File processing complete: ${params.filePath}`, {
+                                originalLength: result.original.length,
+                                strippedLength: result.stripped.length
+                            });
+                            return {
+                                success: true,
+                                data: result
+                            };
+                        }
+                        // Process directory
+                        if (params.directoryPath !== undefined) {
+                            let progressTracker;
+                            let trackerId;
+                            // Setup progress tracking if requested
+                            if (params.trackProgress) {
+                                trackerId = `dir_${Date.now()}`;
+                                progressTracker = {
+                                    total: 0,
+                                    processed: 0,
+                                    updateProgress: (processed, total) => {
+                                        // Update the progress information
+                                        if (progressTracker) {
+                                            progressTracker.processed = processed;
+                                            progressTracker.total = total;
+                                            // Log progress updates at reasonable intervals
+                                            if (processed % 10 === 0 || processed === total) {
+                                                const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                                                logger.debug(`Processing progress: ${processed}/${total} (${percentage}%)`);
+                                            }
+                                        }
+                                    }
+                                };
+                                // Store the progress tracker
+                                progressMap.set(trackerId, progressTracker);
+                                logger.debug(`Created progress tracker: ${trackerId}`);
+                                // Clean up old progress trackers (keep only the last 10)
+                                if (progressMap.size > 10) {
+                                    const keys = Array.from(progressMap.keys());
+                                    progressMap.delete(keys[0]);
+                                    logger.debug(`Removed old progress tracker: ${keys[0]}`);
+                                }
+                            }
+                            logger.info(`Processing directory: ${params.directoryPath}`, {
+                                recursive: params.recursive,
+                                fileTypes: params.fileTypes,
+                                trackProgress: params.trackProgress
+                            });
+                            const results = await processDirectory(params.directoryPath, params.recursive, params.fileTypes, progressTracker);
+                            const fileCount = Object.keys(results).length;
+                            logger.info(`Directory processing complete: ${params.directoryPath}`, {
+                                fileCount,
+                                trackerId
+                            });
+                            return {
+                                success: true,
+                                data: {
+                                    files: Object.entries(results).map(([filePath, content]) => ({
+                                        filePath,
+                                        original: content.original,
+                                        stripped: content.stripped
+                                    })),
+                                    progress: progressTracker ? {
+                                        trackerId,
+                                        processed: progressTracker.processed,
+                                        total: progressTracker.total,
+                                        percentage: progressTracker.total > 0
+                                            ? Math.round((progressTracker.processed / progressTracker.total) * 100)
+                                            : 0
+                                    } : undefined
+                                }
+                            };
+                        }
+                        // This should never happen due to schema validation
+                        throw new ValidationError("Invalid request parameters");
+                    }
+                    catch (error) {
+                        return handleError(error);
+                    }
+                }
+            },
+            "/api/get-progress": {
+                description: "Gets the progress of a directory processing operation",
+                parameters: z.object({
+                    trackerId: z.string()
+                }),
+                handler: async (params, context) => {
+                    try {
+                        // Apply authentication middleware if enabled
+                        try {
+                            params = authMiddleware(params, context.headers);
+                        }
+                        catch (authError) {
+                            logger.error("Authentication failed", { error: authError.message });
+                            return {
+                                success: false,
+                                error: {
+                                    code: 401,
+                                    message: "Authentication failed",
+                                    details: authError.message
+                                }
+                            };
+                        }
+                        logger.debug(`Getting progress for tracker: ${params.trackerId}`);
+                        const progressTracker = progressMap.get(params.trackerId);
+                        if (!progressTracker) {
+                            logger.warn(`Progress tracker not found: ${params.trackerId}`);
+                            return handleError(new ValidationError("Progress tracker not found", { trackerId: params.trackerId }));
+                        }
+                        const percentage = progressTracker.total > 0
+                            ? Math.round((progressTracker.processed / progressTracker.total) * 100)
+                            : 0;
+                        logger.debug(`Progress for ${params.trackerId}: ${progressTracker.processed}/${progressTracker.total} (${percentage}%)`);
+                        return {
+                            success: true,
+                            data: {
+                                processed: progressTracker.processed,
+                                total: progressTracker.total,
+                                percentage,
+                                completed: progressTracker.processed >= progressTracker.total
+                            }
+                        };
+                    }
+                    catch (error) {
+                        return handleError(error);
+                    }
+                }
+            },
+            "/api/auth-status": {
+                description: "Gets the current authentication status and configuration",
+                parameters: z.object({}),
+                handler: async (params, context) => {
+                    try {
+                        // Check if authentication is enabled
+                        const authEnabled = config.AUTH_ENABLED;
+                        // If authentication is enabled, validate the provided API key
+                        let authenticated = false;
+                        if (authEnabled) {
+                            try {
+                                authMiddleware({}, context.headers);
+                                authenticated = true;
+                            }
+                            catch (error) {
+                                authenticated = false;
+                            }
+                        }
+                        return {
+                            success: true,
+                            data: {
+                                authEnabled,
+                                authenticated,
+                                message: authEnabled
+                                    ? (authenticated ? "Authenticated successfully" : "Not authenticated")
+                                    : "Authentication is disabled"
+                            }
+                        };
+                    }
+                    catch (error) {
+                        return handleError(error);
+                    }
+                }
+            }
+        }
+    });
+    console.error("MCP server instance created successfully.");
+    // Create and connect to the transport in a more robust way
+    console.error("Creating StdioServerTransport...");
+    const transport = new StdioServerTransport();
+    console.error("StdioServerTransport created successfully.");
+    // Use a top-level async function to handle the server connection
+    (async () => {
+        try {
+            console.error("Connecting to transport...");
+            await server.connect(transport);
+            console.error("Server connected to transport successfully.");
+            logger.info("Comment Stripper MCP server started successfully");
+            // Set up a heartbeat to keep the connection alive
+            const heartbeatInterval = setInterval(() => {
+                console.error("Server heartbeat...");
+            }, 5000); // Send a heartbeat every 5 seconds
+            // Clean up the heartbeat on exit
+            process.on('exit', () => {
+                clearInterval(heartbeatInterval);
+                console.error("Server exiting, cleared heartbeat interval");
+            });
+            console.error("Server initialized and waiting for requests...");
+        }
+        catch (error) {
+            console.error("Failed to start server:", error);
+            console.error("Stack trace:", error.stack);
+            logger.error("Failed to start server", { error });
+            // Don't exit the process on connection errors
+        }
+    })();
+}
+catch (globalError) {
+    console.error("Global error during initialization:", globalError);
+    console.error("Stack trace:", globalError.stack);
+    // Don't exit the process on initialization errors
+}
+
+
+
+================================================================
+End of Codebase
+================================================================
