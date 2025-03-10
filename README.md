@@ -61,6 +61,59 @@ yarn start
 
 By default, the server runs on port 3000. You can configure this through environment variables.
 
+## MCP 서버 연결 문제 해결 가이드
+
+MCP 서버가 Claude Desktop과 연결 시 예기치 않게 종료되는 문제가 발생할 수 있습니다. 이 문제를 해결하기 위한 가이드입니다.
+
+### 문제 증상
+
+- 서버가 초기화된 후 곧바로 종료됨
+- 로그에 "Server transport closed unexpectedly" 메시지가 표시됨
+- Claude Desktop에서 MCP 서버에 연결할 수 없다는 오류 메시지가 표시됨
+
+### 해결 방법
+
+#### 1. NVM을 사용한 깨끗한 Node.js 환경 설정
+
+```bash
+# NVM 설치 (이미 설치되어 있다면 생략)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+# 최신 Node.js 설치
+nvm install node
+
+# 설치한 버전 활성화
+nvm use node
+```
+
+#### 2. Claude Desktop 설정 파일에 절대 경로 사용
+
+Claude Desktop 설정 파일(`claude_desktop_config.json`)에서 상대 경로 대신 절대 경로를 사용하세요:
+
+```json
+{
+  "mcpServers": {
+    "comment-stripper": {
+      "command": "/절대/경로/node",
+      "args": [
+        "/절대/경로/comment-stripper-mcp/build/index.js"
+      ]
+    }
+  }
+}
+```
+
+`which node` 명령어로 Node.js 경로를 확인할 수 있습니다.
+
+#### 3. 서버 안정성 개선
+
+서버 코드에 다음과 같은 안정성 개선 사항이 적용되어 있습니다:
+
+- 프로세스가 예기치 않게 종료되지 않도록 `process.stdin.resume()` 사용
+- 다중 keep-alive 메커니즘 구현
+- 오류 처리 개선
+- 상세한 로깅 추가
+
 ### Configuration
 
 The server can be configured using environment variables. You can create a `.env` file in the root directory based on the provided `.env.example` file:
@@ -98,128 +151,105 @@ The project uses Jest as the testing framework with TypeScript support via ts-je
 - **Unit tests**: Testing individual functions and components
 - **Integration tests**: Testing API endpoints and interactions between components
 
-### Running Tests
-
 ```bash
 # Run all tests
 npm test
 # or
 yarn test
 
-# Run tests in watch mode (for development)
+# Run tests in watch mode
 npm run test:watch
 # or
 yarn test:watch
 
-# Run tests with coverage report
+# Run tests with coverage
 npm run test:coverage
 # or
 yarn test:coverage
 ```
 
-### Test Structure
+## API Documentation
 
-- `tests/unit/`: Contains unit tests for individual functions and components
-- `tests/integration/`: Contains integration tests for API endpoints
-- `tests/fixtures/`: Contains sample files used for testing
+### Strip Comments Endpoint
 
-### Writing Tests
+**Endpoint**: `/api/strip-comments`
 
-When adding new features, please follow the TDD approach:
+**Method**: POST
 
-1. Write failing tests first that define the expected behavior
-2. Implement the minimum code required to make tests pass
-3. Refactor while ensuring tests continue to pass
+**Description**: Strips comments from code files or text.
 
-Include appropriate tests for:
+**Request Parameters**:
 
-1. **Unit tests** for new functions or components
-2. **Integration tests** for API endpoints or interactions
-3. **Edge case tests** for handling special scenarios
+- `text` (optional): The text to strip comments from.
+- `filePath` (optional): The path to a file to strip comments from.
+- `directoryPath` (optional): The path to a directory to process.
+- `recursive` (optional, default: true): Whether to recursively process subdirectories.
+- `fileTypes` (optional, default: all supported): Array of file extensions to process.
+- `trackProgress` (optional, default: false): Whether to track progress for directory processing.
 
-## Usage
+**Response**:
 
-The server accepts MCP compatible requests. Here are some examples of how to use it:
-
-### Using cURL
-
-```bash
-# Strip comments from a text string
-curl -X POST http://localhost:3000/api/strip-comments \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "text": "// This is a comment\nconst x = 10; // inline comment\n/* Block comment */\nfunction test() {}"
-  }'
-
-# Strip comments from a file
-curl -X POST http://localhost:3000/api/strip-comments \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "filePath": "/path/to/your/file.js"
-  }'
-
-# Strip comments from all supported files in a directory
-curl -X POST http://localhost:3000/api/strip-comments \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "directoryPath": "/path/to/your/directory",
-    "recursive": true
-  }'
-```
-
-### Using the JavaScript Client
-
-```javascript
-const { MCPClient } = require('mcp-client');
-
-async function stripComments() {
-  const client = new MCPClient('http://localhost:3000');
-  client.setApiKey('YOUR_API_KEY');
-  
-  // From text
-  const result1 = await client.request('/api/strip-comments', {
-    text: '// Comment\nconst x = 10;'
-  });
-  
-  // From file
-  const result2 = await client.request('/api/strip-comments', {
-    filePath: './src/index.js'
-  });
-  
-  console.log(result1, result2);
+```json
+{
+  "success": true,
+  "data": {
+    "original": "// Original code with comments",
+    "stripped": "// Code with comments removed"
+  }
 }
-
-stripComments();
 ```
 
-## API Reference
+### Get Progress Endpoint
 
-For detailed API documentation and more usage examples, see:
+**Endpoint**: `/api/get-progress`
 
-- [USAGE.md](docs/USAGE.md) - Comprehensive usage examples
-- [STATUS.md](docs/STATUS.md) - Current implementation status
-- [TODO.md](docs/TODO.md) - Roadmap and planned features
-- [benchmarks.md](docs/benchmarks.md) - Performance benchmarks
-- [ci-cd.md](docs/ci-cd.md) - CI/CD pipeline information
+**Method**: POST
 
-## Performance
+**Description**: Gets the progress of a directory processing operation.
 
-The Comment Stripper MCP is optimized for performance, with the following benchmarks:
+**Request Parameters**:
 
-- JavaScript (100KB): 0.59ms (169.49 MB/s)
-- JavaScript (500KB): 3.20ms (156.25 MB/s)
-- Python (100KB): 0.91ms (109.89 MB/s)
-- Python (500KB): 5.90ms (84.75 MB/s)
+- `trackerId`: The ID of the progress tracker.
 
-See [benchmarks.md](docs/benchmarks.md) for more detailed performance information.
+**Response**:
 
-## License
+```json
+{
+  "success": true,
+  "data": {
+    "processed": 10,
+    "total": 20,
+    "percentage": 50,
+    "completed": false
+  }
+}
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Authentication Status Endpoint
+
+**Endpoint**: `/api/auth-status`
+
+**Method**: POST
+
+**Description**: Gets the current authentication status and configuration.
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "authEnabled": true,
+    "authenticated": true,
+    "message": "Authenticated successfully"
+  }
+}
+```
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the ISC License - see the LICENSE file for details.
