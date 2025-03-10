@@ -114,6 +114,13 @@ Claude Desktop 설정 파일(`claude_desktop_config.json`)에서 상대 경로 �
 - 오류 처리 개선
 - 상세한 로깅 추가
 
+### 추가 문제 해결 팁
+
+- Claude Desktop의 개발자 모드를 활성화하여 MCP 로그 파일에 접근하세요.
+- 서버 실행 시 발생하는 오류 메시지를 확인하세요.
+- 환경 변수가 올바르게 설정되어 있는지 확인하세요.
+- 방화벽이나 보안 소프트웨어가 연결을 차단하고 있지 않은지 확인하세요.
+
 ### Configuration
 
 The server can be configured using environment variables. You can create a `.env` file in the root directory based on the provided `.env.example` file:
