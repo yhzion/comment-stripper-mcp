@@ -57,15 +57,15 @@ This document tracks the planned features, implementation tasks, and their curre
 - [P2] ✅ Setup CI/CD pipeline for automated testing
 
 ### Documentation
-- [P0] 🟡 Complete API documentation
-- [P0] 🟡 Add usage examples
+- [P0] ✅ Complete API documentation
+- [P0] ✅ Add usage examples
+- [P1] ✅ Add comprehensive code documentation with JSDoc comments
 
 ## Future Enhancements
 - [P3] 🔴 Web UI for interactive comment stripping
 - [P3] 🔴 Batch job processing with reports
 - [P3] 🔴 Comment preservation option (e.g., keep license comments)
 - [P3] 🔴 Integration with code formatters
-- [P3] 🔴 Add comprehensive code documentation with JSDoc comments
 
 ## Completed Items
 - [P0] ✅ Setup basic project structure with TypeScript
@@ -81,3 +81,4 @@ This document tracks the planned features, implementation tasks, and their curre
 - [P1] ✅ Implement progress tracking for directory processing
 - [P3] ✅ Add support for Ruby and PHP comments
 - [P2] ✅ Add API authentication (optional)
+- [P1] ✅ Add comprehensive code documentation with JSDoc comments
