@@ -14,6 +14,8 @@ This document provides practical examples of how to use the Comment Stripper MCP
   - [Node.js Integration](#nodejs-integration)
   - [Python Integration](#python-integration)
   - [Shell Script Integration](#shell-script-integration)
+- [Authentication](#authentication)
+- [Error Handling](#error-handling)
 
 ## Command Line Usage
 
@@ -45,6 +47,7 @@ comment-stripper-mcp --dir path/to/directory --track-progress
 ```bash
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"text": "// This is a comment\nconst x = 10; // inline comment"}'
 ```
 
@@ -54,7 +57,8 @@ curl -X POST http://localhost:3000/api/strip-comments \
 const response = await fetch('http://localhost:3000/api/strip-comments', {
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
   },
   body: JSON.stringify({
     text: '// This is a comment\nconst x = 10; // inline comment'
@@ -73,6 +77,7 @@ console.log(result.data.stripped);
 ```bash
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"filePath": "/path/to/file.js"}'
 ```
 
@@ -82,7 +87,8 @@ curl -X POST http://localhost:3000/api/strip-comments \
 const response = await fetch('http://localhost:3000/api/strip-comments', {
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
   },
   body: JSON.stringify({
     filePath: '/path/to/file.js'
@@ -100,10 +106,11 @@ console.log(result.data.stripped);
 ```bash
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
     "directoryPath": "/path/to/directory",
     "recursive": true,
-    "fileTypes": ["js", "ts"],
+    "fileTypes": ["js", "ts", "vue", "html", "css", "py", "java", "cpp", "cs", "rb", "php"],
     "trackProgress": true
   }'
 ```
@@ -114,12 +121,13 @@ curl -X POST http://localhost:3000/api/strip-comments \
 const response = await fetch('http://localhost:3000/api/strip-comments', {
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
   },
   body: JSON.stringify({
     directoryPath: '/path/to/directory',
     recursive: true,
-    fileTypes: ['js', 'ts'],
+    fileTypes: ['js', 'ts', 'vue', 'html', 'css', 'py', 'java', 'cpp', 'cs', 'rb', 'php'],
     trackProgress: true
   })
 });
@@ -137,6 +145,7 @@ console.log(`Progress tracker ID: ${result.data.progress.trackerId}`);
 # First, start a directory processing operation with trackProgress: true
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
     "directoryPath": "/path/to/large/directory",
     "recursive": true,
@@ -146,6 +155,7 @@ curl -X POST http://localhost:3000/api/strip-comments \
 # Then, use the returned trackerId to check progress
 curl -X POST http://localhost:3000/api/get-progress \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"trackerId": "dir_1615482367890"}'
 ```
 
@@ -156,7 +166,8 @@ curl -X POST http://localhost:3000/api/get-progress \
 const processResponse = await fetch('http://localhost:3000/api/strip-comments', {
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_API_KEY'
   },
   body: JSON.stringify({
     directoryPath: '/path/to/large/directory',
@@ -173,7 +184,8 @@ const checkProgress = async () => {
   const progressResponse = await fetch('http://localhost:3000/api/get-progress', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_KEY'
     },
     body: JSON.stringify({ trackerId })
   });
@@ -200,48 +212,37 @@ checkProgress();
 // example.js
 import fetch from 'node-fetch';
 
-const API_URL = 'http://localhost:3000';
-
-async function stripCommentsFromProject() {
+async function stripCommentsFromDirectory() {
   try {
-    // Process a project directory
-    const response = await fetch(`${API_URL}/api/strip-comments`, {
+    const response = await fetch('http://localhost:3000/api/strip-comments', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_KEY'
       },
       body: JSON.stringify({
         directoryPath: './src',
         recursive: true,
-        fileTypes: ['js', 'ts', 'vue'],
+        fileTypes: ['js', 'ts'],
         trackProgress: true
       })
     });
 
     const result = await response.json();
     
-    if (!result.success) {
-      console.error('Error:', result.error.message);
-      return;
+    if (result.success) {
+      console.log(`Successfully processed ${result.data.files.length} files`);
+      console.log(`Total comments removed: ${result.data.stats.totalCommentsRemoved}`);
+      console.log(`Total bytes saved: ${result.data.stats.totalBytesSaved}`);
+    } else {
+      console.error(`Error: ${result.error.message}`);
     }
-    
-    // Save the stripped files to a new directory
-    for (const file of result.data.files) {
-      const outputPath = file.filePath.replace('./src', './dist');
-      // Create directory if it doesn't exist
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      // Write the stripped content
-      await fs.writeFile(outputPath, file.stripped);
-      console.log(`Processed: ${file.filePath} -> ${outputPath}`);
-    }
-    
-    console.log(`Successfully processed ${result.data.files.length} files`);
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Failed to process directory:', error);
   }
 }
 
-stripCommentsFromProject();
+stripCommentsFromDirectory();
 ```
 
 ### Python Integration
@@ -250,115 +251,180 @@ stripCommentsFromProject();
 # example.py
 import requests
 import json
-import os
 import time
 
-API_URL = 'http://localhost:3000'
-
-def strip_comments_from_project():
+def strip_comments_from_directory():
+    api_url = "http://localhost:3000/api/strip-comments"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer YOUR_API_KEY"
+    }
+    payload = {
+        "directoryPath": "./src",
+        "recursive": True,
+        "fileTypes": ["js", "ts", "py"],
+        "trackProgress": True
+    }
+    
     try:
-        # Process a project directory
-        response = requests.post(
-            f"{API_URL}/api/strip-comments",
-            headers={'Content-Type': 'application/json'},
-            json={
-                'directoryPath': './src',
-                'recursive': True,
-                'fileTypes': ['js', 'ts', 'py'],
-                'trackProgress': True
-            }
-        )
-        
+        response = requests.post(api_url, headers=headers, data=json.dumps(payload))
         result = response.json()
         
-        if not result['success']:
+        if result["success"]:
+            tracker_id = result["data"]["progress"]["trackerId"]
+            print(f"Processing started. Tracker ID: {tracker_id}")
+            
+            # Poll for progress
+            check_progress(tracker_id)
+        else:
             print(f"Error: {result['error']['message']}")
-            return
-        
-        # Track progress if it's a large directory
-        tracker_id = result['data']['progress']['trackerId']
-        
-        while True:
-            progress_response = requests.post(
-                f"{API_URL}/api/get-progress",
-                headers={'Content-Type': 'application/json'},
-                json={'trackerId': tracker_id}
-            )
+    except Exception as e:
+        print(f"Failed to process directory: {str(e)}")
+
+def check_progress(tracker_id):
+    api_url = "http://localhost:3000/api/get-progress"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer YOUR_API_KEY"
+    }
+    payload = {"trackerId": tracker_id}
+    
+    while True:
+        try:
+            response = requests.post(api_url, headers=headers, data=json.dumps(payload))
+            result = response.json()
             
-            progress = progress_response.json()['data']
-            print(f"Progress: {progress['processed']}/{progress['total']} ({progress['percentage']}%)")
-            
-            if progress['percentage'] >= 100:
+            if result["success"]:
+                progress = result["data"]
+                print(f"Progress: {progress['processed']}/{progress['total']} ({progress['percentage']}%)")
+                
+                if progress["percentage"] >= 100:
+                    print("Processing complete!")
+                    break
+            else:
+                print(f"Error checking progress: {result['error']['message']}")
                 break
                 
-            time.sleep(1)
-        
-        # Save the stripped files
-        for file in result['data']['files']:
-            output_path = file['filePath'].replace('./src', './dist')
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-            with open(output_path, 'w') as f:
-                f.write(file['stripped'])
-                
-            print(f"Processed: {file['filePath']} -> {output_path}")
-            
-        print(f"Successfully processed {len(result['data']['files'])} files")
-    except Exception as e:
-        print(f"Error: {str(e)}")
+            time.sleep(1)  # Wait 1 second before checking again
+        except Exception as e:
+            print(f"Failed to check progress: {str(e)}")
+            break
 
 if __name__ == "__main__":
-    strip_comments_from_project()
+    strip_comments_from_directory()
 ```
 
 ### Shell Script Integration
 
 ```bash
 #!/bin/bash
-# process_project.sh
 
-API_URL="http://localhost:3000"
-PROJECT_DIR="./src"
-OUTPUT_DIR="./dist"
+# example.sh
+API_URL="http://localhost:3000/api/strip-comments"
+API_KEY="YOUR_API_KEY"
+DIRECTORY="./src"
 
-# Create output directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
-
-# Process the project directory
-echo "Processing directory: $PROJECT_DIR"
-response=$(curl -s -X POST "$API_URL/api/strip-comments" \
+# Process a directory
+response=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY" \
   -d "{
-    \"directoryPath\": \"$PROJECT_DIR\",
-    \"recursive\": true
+    \"directoryPath\": \"$DIRECTORY\",
+    \"recursive\": true,
+    \"fileTypes\": [\"js\", \"ts\"]
   }")
 
 # Check if the request was successful
-success=$(echo "$response" | jq -r '.success')
+success=$(echo $response | jq -r '.success')
 
-if [ "$success" != "true" ]; then
-  error_message=$(echo "$response" | jq -r '.error.message')
+if [ "$success" = "true" ]; then
+  # Extract statistics
+  processed_files=$(echo $response | jq -r '.data.files | length')
+  total_bytes_saved=$(echo $response | jq -r '.data.stats.totalBytesSaved')
+  
+  echo "Successfully processed $processed_files files"
+  echo "Total bytes saved: $total_bytes_saved"
+else
+  # Extract error message
+  error_message=$(echo $response | jq -r '.error.message')
   echo "Error: $error_message"
   exit 1
- fi
-
-# Extract and process each file
-echo "$response" | jq -c '.data.files[]' | while read -r file; do
-  file_path=$(echo "$file" | jq -r '.filePath')
-  stripped_content=$(echo "$file" | jq -r '.stripped')
-  
-  # Create relative output path
-  relative_path=${file_path#"$PROJECT_DIR/"}
-  output_path="$OUTPUT_DIR/$relative_path"
-  
-  # Create directory structure
-  mkdir -p "$(dirname "$output_path")"
-  
-  # Write stripped content to output file
-  echo "$stripped_content" > "$output_path"
-  
-  echo "Processed: $file_path -> $output_path"
-done
-
-echo "Processing complete!"
+fi
 ```
+
+## Authentication
+
+The Comment Stripper MCP API requires authentication for all endpoints. You need to include an API key in the `Authorization` header of your requests.
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+You can configure API keys in the server's environment variables or configuration file.
+
+## Error Handling
+
+The API returns standardized error responses with HTTP status codes and detailed error messages. Here are some common error scenarios and how to handle them:
+
+### Common Error Responses
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_INPUT",
+    "message": "Invalid input: directoryPath must be a string",
+    "details": {
+      "field": "directoryPath",
+      "expected": "string",
+      "received": "number"
+    }
+  }
+}
+```
+
+### Error Codes
+
+| Error Code | HTTP Status | Description |
+|------------|-------------|-------------|
+| INVALID_INPUT | 400 | The request contains invalid input parameters |
+| FILE_NOT_FOUND | 404 | The specified file or directory was not found |
+| UNAUTHORIZED | 401 | Missing or invalid API key |
+| INTERNAL_ERROR | 500 | An unexpected error occurred on the server |
+| UNSUPPORTED_FILE_TYPE | 400 | The file type is not supported for comment stripping |
+
+### Handling Errors in JavaScript
+
+```javascript
+try {
+  const response = await fetch('http://localhost:3000/api/strip-comments', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_KEY'
+    },
+    body: JSON.stringify({
+      filePath: '/path/to/file.js'
+    })
+  });
+
+  const result = await response.json();
+  
+  if (!result.success) {
+    // Handle specific error types
+    switch (result.error.code) {
+      case 'FILE_NOT_FOUND':
+        console.error('The specified file was not found');
+        break;
+      case 'UNAUTHORIZED':
+        console.error('Invalid API key');
+        break;
+      default:
+        console.error(`Error: ${result.error.message}`);
+    }
+  } else {
+    console.log('Success:', result.data);
+  }
+} catch (error) {
+  console.error('Network or parsing error:', error);
+}

@@ -1,6 +1,6 @@
 # comment-stripper-mcp
 
-A flexible MCP server that batch processes code files to remove comments across multiple programming languages. Currently supports JavaScript, TypeScript, and Vue files with regex-based pattern matching, with planned support for CSS/SCSS/LESS, HTML, Python, Java, C#, C++, Ruby, and PHP.
+A flexible MCP server that batch processes code files to remove comments across multiple programming languages. Currently supports JavaScript, TypeScript, Vue, CSS/SCSS/LESS, HTML, Python, Java, C#, C++, Ruby, and PHP files with regex-based pattern matching.
 
 ## Overview
 
@@ -11,7 +11,7 @@ This project is developed using **Test-Driven Development (TDD)** methodology, e
 ## Features
 
 - 🔄 Process files, directories, or raw text input
-- 🌐 Cross-language support (initially JS, TS, Vue with planned expansion to CSS/SCSS/LESS, HTML, Python, Java, C#, C++, Ruby, and PHP)
+- 🌐 Cross-language support (JS, TS, Vue, CSS/SCSS/LESS, HTML, Python, Java, C#, C++, Ruby, and PHP)
 - 📂 Recursively handle nested directories
 - ⚡ Regex-based pattern matching for efficient comment removal
 - 🔌 MCP-compliant API for easy integration
@@ -20,6 +20,8 @@ This project is developed using **Test-Driven Development (TDD)** methodology, e
 - ⚠️ Robust error handling with standardized error responses
 - ⚙️ Flexible configuration through environment variables
 - 🚀 Performance optimization for processing large files
+- 🔐 API authentication for secure access
+- 📈 Progress tracking for large directory processing
 
 ## Getting Started
 
@@ -78,6 +80,9 @@ LOG_DIR=logs             # Directory for log files
 CHUNK_SIZE=1048576       # 1MB chunk size for processing large files
 MAX_WORKERS=4            # Number of concurrent workers for batch processing
 MEMORY_LIMIT=536870912   # 512MB memory limit before using streaming
+
+# Authentication
+API_KEY=your-secret-key  # API key for authentication
 ```
 
 ## Testing
@@ -142,6 +147,7 @@ The server accepts MCP compatible requests. Here are some examples of how to use
 # Strip comments from a text string
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
     "text": "// This is a comment\nconst x = 10; // inline comment\n/* Block comment */\nfunction test() {}"
   }'
@@ -149,13 +155,15 @@ curl -X POST http://localhost:3000/api/strip-comments \
 # Strip comments from a file
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
     "filePath": "/path/to/your/file.js"
   }'
 
-# Strip comments from all JS/TS/Vue files in a directory
+# Strip comments from all supported files in a directory
 curl -X POST http://localhost:3000/api/strip-comments \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
     "directoryPath": "/path/to/your/directory",
     "recursive": true
@@ -169,6 +177,7 @@ const { MCPClient } = require('mcp-client');
 
 async function stripComments() {
   const client = new MCPClient('http://localhost:3000');
+  client.setApiKey('YOUR_API_KEY');
   
   // From text
   const result1 = await client.request('/api/strip-comments', {
@@ -188,113 +197,29 @@ stripComments();
 
 ## API Reference
 
-### Endpoints
+For detailed API documentation and more usage examples, see:
 
-- `POST /api/strip-comments`: Main endpoint for all comment stripping operations
-- `POST /api/get-progress`: Get progress information for directory processing operations
+- [USAGE.md](docs/USAGE.md) - Comprehensive usage examples
+- [STATUS.md](docs/STATUS.md) - Current implementation status
+- [TODO.md](docs/TODO.md) - Roadmap and planned features
+- [benchmarks.md](docs/benchmarks.md) - Performance benchmarks
+- [ci-cd.md](docs/ci-cd.md) - CI/CD pipeline information
 
-### Request Parameters
+## Performance
 
-#### Strip Comments Endpoint
+The Comment Stripper MCP is optimized for performance, with the following benchmarks:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `text` | string | Optional. Raw code text to be processed |
-| `filePath` | string | Optional. Path to a single file to process |
-| `directoryPath` | string | Optional. Path to a directory to process |
-| `recursive` | boolean | Optional. Whether to recursively process subdirectories (default: true) |
-| `fileTypes` | string[] | Optional. Array of file extensions to process (default: ['js', 'ts', 'vue', 'css', 'scss', 'less', 'html', 'py', 'java', 'cs', 'cpp', 'c', 'rb', 'php']) |
-| `trackProgress` | boolean | Optional. Whether to track progress for directory processing (default: false) |
+- JavaScript (100KB): 0.59ms (169.49 MB/s)
+- JavaScript (500KB): 3.20ms (156.25 MB/s)
+- Python (100KB): 0.91ms (109.89 MB/s)
+- Python (500KB): 5.90ms (84.75 MB/s)
 
-#### Get Progress Endpoint
+See [benchmarks.md](docs/benchmarks.md) for more detailed performance information.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `trackerId` | string | Required. The ID of the progress tracker to query |
+## License
 
-### Response Format
-
-#### Success Response
-
-```json
-{
-  "success": true,
-  "data": {
-    "original": "// Original code with comments\nconst x = 10;",
-    "stripped": "const x = 10;"
-  }
-}
-```
-
-For directory processing with progress tracking:
-
-```json
-{
-  "success": true,
-  "data": {
-    "files": [
-      {
-        "filePath": "/path/to/file1.js",
-        "original": "// Original code\nconst x = 10;",
-        "stripped": "const x = 10;"
-      },
-      // More files...
-    ],
-    "progress": {
-      "trackerId": "dir_1678901234567",
-      "processed": 10,
-      "total": 10,
-      "percentage": 100
-    }
-  }
-}
-```
-
-#### Error Response
-
-```json
-{
-  "success": false,
-  "error": "Error message",
-  "code": "ERROR_CODE",
-  "details": {
-    // Additional error details
-  }
-}
-```
-
-## Error Handling
-
-The server provides standardized error responses with the following error codes:
-
-- `VALIDATION_ERROR`: Invalid input parameters
-- `FILE_SYSTEM_ERROR`: File system access or permission issues
-- `UNSUPPORTED_FILE_TYPE`: Unsupported file extension
-- `PROCESSING_ERROR`: Error during comment stripping process
-- `INTERNAL_ERROR`: Unexpected server error
-
-## Logging
-
-The server uses a configurable logging system with the following log levels:
-
-- `ERROR (0)`: Critical errors that prevent operation
-- `WARN (1)`: Warning conditions that should be addressed
-- `INFO (2)`: Informational messages about normal operation
-- `DEBUG (3)`: Detailed debug information
-- `TRACE (4)`: Very detailed tracing information
-
-Logs can be output to the console and optionally to a file. The log level and file logging can be configured through environment variables.
-
-## Performance Optimization
-
-For large files, the server uses a streaming approach to process the file in chunks, which reduces memory usage and improves performance. The chunk size and memory limit can be configured through environment variables.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request

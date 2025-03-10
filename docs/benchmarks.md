@@ -43,25 +43,26 @@ These benchmarks measure the performance of processing individual files, includi
 
 These benchmarks measure the performance of processing entire directories, both with and without recursion.
 
-## Sample Output
+## Latest Benchmark Results (2025-03-10)
 
 ```
-🚀 Running Comment Stripper Performance Benchmarks
+🚀 Comment Stripper Performance Results
 
 =============================================
 
-📊 File Size: SMALL (10 KB)
+📊 JavaScript Performance
 
-Language | Avg Time (ms) | Throughput (MB/s) | Comment Reduction (%)
----------|--------------|------------------|--------------------
-JavaScript |         5.42 |             1.85 |              39.87
-HTML      |         2.31 |             4.33 |              29.65
-CSS       |         1.98 |             5.05 |              34.22
-Python    |         3.76 |             2.66 |              40.11
+File Size | Avg Time (ms) | Throughput (MB/s)
+----------|--------------|------------------
+100KB     |         0.59 |            169.49
+500KB     |         3.20 |            156.25
 
-📊 File Size: MEDIUM (100 KB)
+📊 Python Performance
 
-...
+File Size | Avg Time (ms) | Throughput (MB/s)
+----------|--------------|------------------
+100KB     |         0.91 |            109.89
+500KB     |         5.90 |             84.75
 ```
 
 ## Interpreting Results
