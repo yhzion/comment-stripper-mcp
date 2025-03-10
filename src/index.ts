@@ -27,8 +27,11 @@ console.error(`stderr isTTY: ${process.stderr.isTTY}`);
 console.error(`stdin is a pipe: ${!process.stdin.isTTY}`);
 console.error(`stdout is a pipe: ${!process.stdout.isTTY}`);
 
-// Ensure the process doesn't exit prematurely
+// Ensure the process doesn't exit prematurely - CRITICAL for MCP stability
 process.stdin.resume();
+
+// Prevent Node.js from exiting due to unhandled errors
+process.setMaxListeners(20); // Increase max listeners to prevent warnings
 
 // Set up error handlers early
 process.on('uncaughtException', (error: any) => {
@@ -57,6 +60,10 @@ process.on('SIGTERM', () => {
   logger.close();
   process.exit(0);
 });
+
+// Keep the process alive with multiple mechanisms
+let keepAliveInterval: NodeJS.Timeout;
+let heartbeatInterval: NodeJS.Timeout;
 
 try {
   console.error("Importing dependencies...");
@@ -342,15 +349,29 @@ try {
       console.error("Server connected to transport successfully.");
       logger.info("Comment Stripper MCP server started successfully");
       
-      // Set up a heartbeat to keep the connection alive
-      const heartbeatInterval = setInterval(() => {
-        console.error("Server heartbeat...");
-      }, 5000); // Send a heartbeat every 5 seconds
+      // Set up multiple keep-alive mechanisms
       
-      // Clean up the heartbeat on exit
+      // 1. Heartbeat to stderr (visible in logs)
+      heartbeatInterval = setInterval(() => {
+        console.error(`Server heartbeat... [${new Date().toISOString()}]`);
+      }, 3000); // Every 3 seconds
+      
+      // 2. Keep-alive interval that does minimal work
+      keepAliveInterval = setInterval(() => {
+        // Do nothing, just keep the event loop active
+      }, 1000); // Every 1 second
+      
+      // 3. Keep stdin open and flowing
+      process.stdin.on('data', (data) => {
+        // Process incoming data if needed
+        console.error(`Received data on stdin: ${data.length} bytes`);
+      });
+      
+      // Clean up intervals on exit
       process.on('exit', () => {
         clearInterval(heartbeatInterval);
-        console.error("Server exiting, cleared heartbeat interval");
+        clearInterval(keepAliveInterval);
+        console.error("Server exiting, cleared intervals");
       });
       
       console.error("Server initialized and waiting for requests...");
@@ -359,10 +380,16 @@ try {
       console.error("Stack trace:", error.stack);
       logger.error("Failed to start server", { error });
       // Don't exit the process on connection errors
+      
+      // Even if connection fails, keep the process alive
+      process.stdin.resume();
     }
   })();
 } catch (globalError: any) {
   console.error("Global error during initialization:", globalError);
   console.error("Stack trace:", globalError.stack);
   // Don't exit the process on initialization errors
+  
+  // Even if initialization fails, keep the process alive
+  process.stdin.resume();
 }
