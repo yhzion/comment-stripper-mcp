@@ -16,6 +16,10 @@ This project is developed using **Test-Driven Development (TDD)** methodology, e
 - ⚡ Regex-based pattern matching for efficient comment removal
 - 🔌 MCP-compliant API for easy integration
 - 🛠️ Built with Node.js and TypeScript
+- 📊 Comprehensive logging system with multiple log levels
+- ⚠️ Robust error handling with standardized error responses
+- ⚙️ Flexible configuration through environment variables
+- 🚀 Performance optimization for processing large files
 
 ## Getting Started
 
@@ -54,6 +58,27 @@ yarn start
 ```
 
 By default, the server runs on port 3000. You can configure this through environment variables.
+
+### Configuration
+
+The server can be configured using environment variables. You can create a `.env` file in the root directory based on the provided `.env.example` file:
+
+```bash
+# Server configuration
+PORT=3000                # Port for the server to listen on
+HOST=127.0.0.1           # Host for the server to bind to
+NODE_ENV=development     # Environment (development, production, test)
+
+# Logging configuration
+LOG_LEVEL=2              # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG, 4=TRACE
+LOG_TO_FILE=false        # Whether to log to a file
+LOG_DIR=logs             # Directory for log files
+
+# Performance configuration
+CHUNK_SIZE=1048576       # 1MB chunk size for processing large files
+MAX_WORKERS=4            # Number of concurrent workers for batch processing
+MEMORY_LIMIT=536870912   # 512MB memory limit before using streaming
+```
 
 ## Testing
 
@@ -166,8 +191,11 @@ stripComments();
 ### Endpoints
 
 - `POST /api/strip-comments`: Main endpoint for all comment stripping operations
+- `POST /api/get-progress`: Get progress information for directory processing operations
 
 ### Request Parameters
+
+#### Strip Comments Endpoint
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -175,9 +203,18 @@ stripComments();
 | `filePath` | string | Optional. Path to a single file to process |
 | `directoryPath` | string | Optional. Path to a directory to process |
 | `recursive` | boolean | Optional. Whether to recursively process subdirectories (default: true) |
-| `fileTypes` | string[] | Optional. Array of file extensions to process (default: ['js', 'ts', 'vue']). Future versions will support ['css', 'scss', 'less', 'html', 'py', 'java', 'cs', 'cpp', 'c', 'h', 'rb', 'php'] |
+| `fileTypes` | string[] | Optional. Array of file extensions to process (default: ['js', 'ts', 'vue', 'css', 'scss', 'less', 'html', 'py', 'java', 'cs', 'cpp', 'c', 'rb', 'php']) |
+| `trackProgress` | boolean | Optional. Whether to track progress for directory processing (default: false) |
+
+#### Get Progress Endpoint
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `trackerId` | string | Required. The ID of the progress tracker to query |
 
 ### Response Format
+
+#### Success Response
 
 ```json
 {
@@ -189,7 +226,68 @@ stripComments();
 }
 ```
 
-For directory processing, the response includes details for each processed file.
+For directory processing with progress tracking:
+
+```json
+{
+  "success": true,
+  "data": {
+    "files": [
+      {
+        "filePath": "/path/to/file1.js",
+        "original": "// Original code\nconst x = 10;",
+        "stripped": "const x = 10;"
+      },
+      // More files...
+    ],
+    "progress": {
+      "trackerId": "dir_1678901234567",
+      "processed": 10,
+      "total": 10,
+      "percentage": 100
+    }
+  }
+}
+```
+
+#### Error Response
+
+```json
+{
+  "success": false,
+  "error": "Error message",
+  "code": "ERROR_CODE",
+  "details": {
+    // Additional error details
+  }
+}
+```
+
+## Error Handling
+
+The server provides standardized error responses with the following error codes:
+
+- `VALIDATION_ERROR`: Invalid input parameters
+- `FILE_SYSTEM_ERROR`: File system access or permission issues
+- `UNSUPPORTED_FILE_TYPE`: Unsupported file extension
+- `PROCESSING_ERROR`: Error during comment stripping process
+- `INTERNAL_ERROR`: Unexpected server error
+
+## Logging
+
+The server uses a configurable logging system with the following log levels:
+
+- `ERROR (0)`: Critical errors that prevent operation
+- `WARN (1)`: Warning conditions that should be addressed
+- `INFO (2)`: Informational messages about normal operation
+- `DEBUG (3)`: Detailed debug information
+- `TRACE (4)`: Very detailed tracing information
+
+Logs can be output to the console and optionally to a file. The log level and file logging can be configured through environment variables.
+
+## Performance Optimization
+
+For large files, the server uses a streaming approach to process the file in chunks, which reduces memory usage and improves performance. The chunk size and memory limit can be configured through environment variables.
 
 ## Contributing
 
@@ -200,55 +298,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- [Model Context Protocol](https://modelcontextprotocol.io/) for the API specification
-- All contributors and maintainers
-
-## Documentation Guidelines
-
-This project uses a structured documentation approach to track progress, changes, and current status.
-
-### Documentation Files
-
-- **[README.md](./README.md)**: Main project documentation with overview, setup instructions, and usage examples.
-- **[docs/TODO.md](./docs/TODO.md)**: Prioritized list of tasks with implementation and testing status.
-- **[docs/HISTORY.md](./docs/HISTORY.md)**: Timestamped work records with automatic versioning.
-- **[docs/STATUS.md](./docs/STATUS.md)**: Current implementation state, continuously updated.
-
-### Documentation Maintenance Rules
-
-Each documentation file follows specific writing rules that can be found in the `/docs/rules` directory:
-
-1. **[todo-writing-rule.md](./docs/rules/todo-writing-rule.md)**: Guidelines for maintaining the TODO.md file.
-2. **[history-writing-rule.md](./docs/rules/history-writing-rule.md)**: Guidelines for recording changes in HISTORY.md.
-3. **[status-writing-rule.md](./docs/rules/status-writing-rule.md)**: Guidelines for updating STATUS.md.
-
-Contributors should review these rules and update the documentation files as part of regular development workflow.
-
-### Documentation Update Requirements
-
-**Important**: Documentation must be updated in sync with code changes. For each code modification:
-
-1. **For any code change**:
-   - Update **STATUS.md** to reflect the current implementation state
-   - Add an entry to **HISTORY.md** with appropriate version increment
-   
-2. **For feature implementations**:
-   - Update **TODO.md** to mark tasks as completed
-   - Update **README.md** if the feature affects usage, API, or overall capabilities
-   
-3. **For major releases**:
-   - Perform a comprehensive review of all documentation
-   - Ensure README examples and API documentation are up-to-date
-   
-4. **For bug fixes**:
-   - Document the fix in HISTORY.md
-   - Update STATUS.md if the bug affected a component's status
-
-This step-by-step documentation update process ensures that all project documentation remains accurate and provides a reliable reference for both users and contributors.
