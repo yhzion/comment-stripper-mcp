@@ -1,6 +1,63 @@
 ---
-description: 
-globs: 
-alwaysApply: false
+description: "This implementation guide provides comprehensive rules and context about the project structure, TDD practices, coding standards, and operational guidelines for the Comment Stripper MCP project."
+autoAttach: ["README.md", "docs/**/*.md"]
 ---
- 
+
+# Comment Stripper MCP - Implementation Guide
+
+This document is intended to provide additional context and rules about the project structure, development practices, documentation guidelines, and operational considerations for the Comment Stripper MCP project.
+
+## Project Overview
+- A flexible MCP server that batch processes code files to remove comments across multiple programming languages (JavaScript, TypeScript, and Vue).
+- Implements the Model Context Protocol (MCP) for easy integration.
+
+## Development Methodology
+- **Test-Driven Development (TDD):**
+  1. Write a failing test (Red phase)
+  2. Implement the minimum code to pass the test (Green phase)
+  3. Refactor while keeping tests passing
+
+## Code Structure
+- **src/**: Contains the source code.
+- **tests/**: Contains unit tests, integration tests, and fixtures.
+- **docs/**: Contains all project documentation.
+  - **docs/TODO.md**: Prioritized task list for the project.
+  - **docs/HISTORY.md**: Chronological change log with semantic versioning.
+  - **docs/STATUS.md**: Snapshot of the current implementation state.
+- **implementation-guide.mdc**: This document, providing the implementation guide.
+
+## Documentation Guidelines
+- Update **README.md** with project overview, setup instructions, and usage.
+- Maintain updated documentation in **docs/TODO.md**, **docs/HISTORY.md**, and **docs/STATUS.md** to reflect code changes accurately.
+- Use consistent status markers:
+  - 🔴 Not Started
+  - 🟡 In Progress
+  - 🟢 Implemented (but not fully tested)
+  - ✅ Tested & Completed
+
+## Coding Standards & Testing
+- Use TypeScript for all code for type safety and clarity.
+- Follow TDD by writing tests (both unit and integration) before implementing features.
+- Ensure robust error handling and clear code comments for complex logic.
+
+## API & Operational Guidelines
+- Ensure that API endpoints are MCP-compliant and provide consistent responses.
+- Implement proper error messages, logging, and configuration via environment variables.
+- Document deployment steps and maintain an efficient Git workflow with feature branches and clear commit messages.
+
+## Security & Performance Considerations
+- Validate all input parameters and secure file handling to prevent vulnerabilities (e.g., path traversal).
+- Optimize regex patterns for performance and consider memory usage for large files.
+
+## Git Workflow
+- Create feature branches for new features.
+- Write clear, descriptive commit messages and update related documentation files concurrently.
+- Merge changes only after thorough testing and code review.
+
+---
+
+@ You can reference other key project files:
+- @README.md for project overview and usage examples.
+- @docs/TODO.md, @docs/HISTORY.md, @docs/STATUS.md for documentation guidelines and update processes.
+
+This guide should be used as a reference for all development and documentation practices associated with the project. 
