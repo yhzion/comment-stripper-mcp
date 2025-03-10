@@ -8,6 +8,8 @@ import { config } from "./utils/config.js";
 import { handleError, ValidationError } from "./utils/errorHandler.js";
 import { authMiddleware } from "./utils/auth.js";
 
+console.error("Starting MCP server initialization...");
+
 // Define the request schema for the strip-comments endpoint
 const stripCommentsSchema = z.object({
   text: z.string().optional(),
@@ -28,6 +30,8 @@ type StripCommentsParams = z.infer<typeof stripCommentsSchema>;
 
 // Create a map to store progress information for directory processing
 const progressMap = new Map<string, ProgressTracker>();
+
+console.error("Creating MCP server instance...");
 
 // Create the MCP server
 const server = new McpServer({
@@ -270,12 +274,17 @@ const server = new McpServer({
   }
 });
 
+console.error("MCP server instance created successfully.");
+
 // Start the server with stdio transport
 const transport = new StdioServerTransport();
+
+console.error("Created StdioServerTransport.");
 
 // Use an async IIFE to start the server
 (async () => {
   try {
+    console.error(`Starting Comment Stripper MCP server (${config.NODE_ENV} mode)`);
     logger.info(`Starting Comment Stripper MCP server (${config.NODE_ENV} mode)`);
     logger.debug("Server configuration", {
       logLevel: config.LOG_LEVEL,
@@ -285,7 +294,9 @@ const transport = new StdioServerTransport();
       authEnabled: config.AUTH_ENABLED
     });
     
+    console.error("About to connect to transport...");
     await server.connect(transport);
+    console.error("Server connected to transport successfully.");
     logger.info("Comment Stripper MCP server started successfully");
     
     if (config.AUTH_ENABLED) {
@@ -293,7 +304,10 @@ const transport = new StdioServerTransport();
     } else {
       logger.info("API authentication is disabled");
     }
+
+    console.error("Server initialized and waiting for requests...");
   } catch (error) {
+    console.error("Failed to start server:", error);
     logger.error("Failed to start server", { error });
     process.exit(1);
   }
@@ -312,12 +326,14 @@ const transport = new StdioServerTransport();
   });
   
   process.on('uncaughtException', (error) => {
+    console.error("Uncaught exception:", error.message, error.stack);
     logger.error("Uncaught exception", { error: error.message, stack: error.stack });
     logger.close();
     process.exit(1);
   });
   
   process.on('unhandledRejection', (reason) => {
+    console.error("Unhandled promise rejection:", reason);
     logger.error("Unhandled promise rejection", { reason });
     logger.close();
     process.exit(1);

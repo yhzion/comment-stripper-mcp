@@ -1,12 +1,12 @@
 {
   "name": "comment-stripper-mcp",
   "version": "1.0.0",
-  "description": "A flexible MCP server that batch processes code files to remove comments across multiple programming languages. Currently supports JavaScript, TypeScript, and Vue files with regex-based pattern matching.",
-  "main": "index.js",
+  "description": "A flexible MCP server that batch processes code files to remove comments across multiple programming languages",
   "type": "module",
+  "main": "build/index.js",
   "scripts": {
-    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "dev": "node --loader ts-node/esm src/index.ts",
     "start": "node build/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
