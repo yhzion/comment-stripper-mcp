@@ -41,6 +41,11 @@ const configSchema = z.object({
   
   // Security configuration
   TIMEOUT: z.coerce.number().int().positive().default(30000), // 30 seconds default
+  
+  // Authentication configuration
+  AUTH_ENABLED: z.coerce.boolean().default(false),
+  API_KEYS: z.string().default(''),
+  AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(100), // Requests per minute
 });
 
 // Define the configuration type
@@ -68,6 +73,7 @@ export function loadConfig(): AppConfig {
       logger.debug('Loaded configuration', {
         ...config,
         // Omit any sensitive values if they were to be added in the future
+        API_KEYS: config.API_KEYS ? '********' : ''
       });
     }
     

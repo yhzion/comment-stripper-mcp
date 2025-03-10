@@ -6,6 +6,7 @@ import { processFile, processDirectory, SUPPORTED_EXTENSIONS, ProgressTracker } 
 import { logger } from "./utils/logger.js";
 import { config } from "./utils/config.js";
 import { handleError, ValidationError } from "./utils/errorHandler.js";
+import { authMiddleware } from "./utils/auth.js";
 
 // Define the request schema for the strip-comments endpoint
 const stripCommentsSchema = z.object({
@@ -36,8 +37,23 @@ const server = new McpServer({
     "/api/strip-comments": {
       description: "Strips comments from code files",
       parameters: stripCommentsSchema,
-      handler: async (params: StripCommentsParams) => {
+      handler: async (params: StripCommentsParams, context: { headers: Record<string, string> }) => {
         try {
+          // Apply authentication middleware if enabled
+          try {
+            params = authMiddleware(params, context.headers);
+          } catch (authError: any) {
+            logger.error("Authentication failed", { error: authError.message });
+            return {
+              success: false,
+              error: {
+                code: 401,
+                message: "Authentication failed",
+                details: authError.message
+              }
+            };
+          }
+          
           logger.info("Processing strip-comments request", { 
             hasText: params.text !== undefined,
             filePath: params.filePath,
@@ -171,8 +187,23 @@ const server = new McpServer({
       parameters: z.object({
         trackerId: z.string()
       }),
-      handler: async (params: { trackerId: string }) => {
+      handler: async (params: { trackerId: string }, context: { headers: Record<string, string> }) => {
         try {
+          // Apply authentication middleware if enabled
+          try {
+            params = authMiddleware(params, context.headers);
+          } catch (authError: any) {
+            logger.error("Authentication failed", { error: authError.message });
+            return {
+              success: false,
+              error: {
+                code: 401,
+                message: "Authentication failed",
+                details: authError.message
+              }
+            };
+          }
+          
           logger.debug(`Getting progress for tracker: ${params.trackerId}`);
           const progressTracker = progressMap.get(params.trackerId);
           
@@ -200,6 +231,41 @@ const server = new McpServer({
           return handleError(error);
         }
       }
+    },
+    
+    "/api/auth-status": {
+      description: "Gets the current authentication status and configuration",
+      parameters: z.object({}),
+      handler: async (params: {}, context: { headers: Record<string, string> }) => {
+        try {
+          // Check if authentication is enabled
+          const authEnabled = config.AUTH_ENABLED;
+          
+          // If authentication is enabled, validate the provided API key
+          let authenticated = false;
+          if (authEnabled) {
+            try {
+              authMiddleware({}, context.headers);
+              authenticated = true;
+            } catch (error) {
+              authenticated = false;
+            }
+          }
+          
+          return {
+            success: true,
+            data: {
+              authEnabled,
+              authenticated,
+              message: authEnabled 
+                ? (authenticated ? "Authenticated successfully" : "Not authenticated") 
+                : "Authentication is disabled"
+            }
+          };
+        } catch (error) {
+          return handleError(error);
+        }
+      }
     }
   }
 });
@@ -215,11 +281,18 @@ const transport = new StdioServerTransport();
       logLevel: config.LOG_LEVEL,
       logToFile: config.LOG_TO_FILE,
       maxWorkers: config.MAX_WORKERS,
-      chunkSize: config.CHUNK_SIZE
+      chunkSize: config.CHUNK_SIZE,
+      authEnabled: config.AUTH_ENABLED
     });
     
     await server.connect(transport);
     logger.info("Comment Stripper MCP server started successfully");
+    
+    if (config.AUTH_ENABLED) {
+      logger.info("API authentication is enabled");
+    } else {
+      logger.info("API authentication is disabled");
+    }
   } catch (error) {
     logger.error("Failed to start server", { error });
     process.exit(1);
