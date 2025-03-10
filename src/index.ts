@@ -27,12 +27,42 @@ console.error(`stderr isTTY: ${process.stderr.isTTY}`);
 console.error(`stdin is a pipe: ${!process.stdin.isTTY}`);
 console.error(`stdout is a pipe: ${!process.stdout.isTTY}`);
 
+// Ensure the process doesn't exit prematurely
+process.stdin.resume();
+
+// Set up error handlers early
+process.on('uncaughtException', (error: any) => {
+  console.error("Uncaught exception:", error);
+  logger.error("Uncaught exception", { error: error.message, stack: error.stack });
+  // Don't exit the process on uncaught exceptions
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error("Unhandled promise rejection:", reason);
+  logger.error("Unhandled promise rejection", { reason });
+  // Don't exit the process on unhandled rejections
+});
+
+// Handle process termination gracefully
+process.on('SIGINT', () => {
+  console.error("Received SIGINT signal, shutting down...");
+  logger.info("Server shutting down");
+  logger.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.error("Received SIGTERM signal, shutting down...");
+  logger.info("Server shutting down");
+  logger.close();
+  process.exit(0);
+});
+
 try {
   console.error("Importing dependencies...");
   console.error("Dependencies imported successfully.");
   
   console.error("Defining schemas and creating server instance...");
-
   // Define the request schema for the strip-comments endpoint
   const stripCommentsSchema = z.object({
     text: z.string().optional(),
@@ -312,37 +342,15 @@ try {
       console.error("Server connected to transport successfully.");
       logger.info("Comment Stripper MCP server started successfully");
       
-      // Keep the process alive and prevent it from exiting
-      process.stdin.resume();
+      // Set up a heartbeat to keep the connection alive
+      const heartbeatInterval = setInterval(() => {
+        console.error("Server heartbeat...");
+      }, 5000); // Send a heartbeat every 5 seconds
       
-      // Handle process termination gracefully
-      process.on('SIGINT', () => {
-        console.error("Received SIGINT signal, shutting down...");
-        logger.info("Server shutting down");
-        logger.close();
-        process.exit(0);
-      });
-      
-      process.on('SIGTERM', () => {
-        console.error("Received SIGTERM signal, shutting down...");
-        logger.info("Server shutting down");
-        logger.close();
-        process.exit(0);
-      });
-      
-      // Handle uncaught exceptions and unhandled rejections
-      process.on('uncaughtException', (error) => {
-        console.error("Uncaught exception:", error);
-        logger.error("Uncaught exception", { error: error.message, stack: error.stack });
-        logger.close();
-        process.exit(1);
-      });
-      
-      process.on('unhandledRejection', (reason) => {
-        console.error("Unhandled promise rejection:", reason);
-        logger.error("Unhandled promise rejection", { reason });
-        logger.close();
-        process.exit(1);
+      // Clean up the heartbeat on exit
+      process.on('exit', () => {
+        clearInterval(heartbeatInterval);
+        console.error("Server exiting, cleared heartbeat interval");
       });
       
       console.error("Server initialized and waiting for requests...");
@@ -350,11 +358,11 @@ try {
       console.error("Failed to start server:", error);
       console.error("Stack trace:", error.stack);
       logger.error("Failed to start server", { error });
-      process.exit(1);
+      // Don't exit the process on connection errors
     }
   })();
 } catch (globalError: any) {
   console.error("Global error during initialization:", globalError);
   console.error("Stack trace:", globalError.stack);
-  process.exit(1);
+  // Don't exit the process on initialization errors
 }
