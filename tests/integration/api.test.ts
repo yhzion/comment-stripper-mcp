@@ -6,9 +6,88 @@ import { stripComments } from '../../src/utils/commentStripper.js';
 import { processFile, processDirectory } from '../../src/utils/fileProcessor.js';
 import path from 'path';
 
+// Define response types for type safety
+type StripTextResponse = {
+  success: boolean;
+  data: {
+    original: string;
+    stripped: string;
+  };
+  error?: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
+type StripFileResponse = {
+  success: boolean;
+  data: {
+    original: string;
+    stripped: string;
+  };
+  error?: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
+type StripDirectoryResponse = {
+  success: boolean;
+  data: {
+    files: {
+      filePath: string;
+      original: string;
+      stripped: string;
+    }[];
+  };
+  error?: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
+type ProgressResponse = {
+  success: boolean;
+  data: {
+    processed: number;
+    total: number;
+    percentage: number;
+  };
+  error?: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
+type AuthStatusResponse = {
+  success: boolean;
+  data: {
+    enabled: boolean;
+    tokenRequired: boolean;
+  };
+  error?: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
+type ErrorResponse = {
+  success: false;
+  error: {
+    code: number;
+    message: string;
+    details?: string;
+  };
+};
+
 // Create mock handlers for testing
 const mockHandlers = {
-  stripComments: async (params: any) => {
+  stripComments: async (params: any): Promise<StripTextResponse | StripFileResponse | StripDirectoryResponse | ErrorResponse> => {
     try {
       // Process text input
       if (params.text !== undefined) {
@@ -28,7 +107,7 @@ const mockHandlers = {
         return {
           success: true,
           data: result
-        };
+        } as StripFileResponse;
       }
       
       // Process directory
@@ -70,7 +149,7 @@ const mockHandlers = {
       };
     }
   },
-  getProgress: async (params: { trackerId: string }) => {
+  getProgress: async (params: { trackerId: string }): Promise<ProgressResponse> => {
     return {
       success: true,
       data: {
@@ -80,7 +159,7 @@ const mockHandlers = {
       }
     };
   },
-  authStatus: async () => {
+  authStatus: async (): Promise<AuthStatusResponse> => {
     return {
       success: true,
       data: {
@@ -91,12 +170,18 @@ const mockHandlers = {
   }
 };
 
+// Define response type for the mock request
+type MockResponse<T> = {
+  status: number;
+  body: T;
+};
+
 // Mock request handler for testing
 const mockRequest = {
   post: (url: string) => {
     return {
-      send: async (data: any) => {
-        let result;
+      send: async <T>(data: any): Promise<MockResponse<T>> => {
+        let result: any;
         
         // Route the request to the appropriate handler
         if (url === '/api/strip-comments') {
@@ -118,7 +203,7 @@ const mockRequest = {
         
         return {
           status: result.success ? 200 : (result.error?.code || 500),
-          body: result
+          body: result as T
         };
       }
     };
@@ -130,7 +215,7 @@ describe('API Endpoints', () => {
     test('should strip comments from text input', async () => {
       const response = await mockRequest
         .post('/api/strip-comments')
-        .send({
+        .send<StripTextResponse>({
           text: '// This is a comment\nconst x = 10; // inline comment'
         });
       
@@ -144,7 +229,7 @@ describe('API Endpoints', () => {
       
       const response = await mockRequest
         .post('/api/strip-comments')
-        .send({
+        .send<StripFileResponse>({
           filePath: fixturePath
         });
       
@@ -161,7 +246,7 @@ describe('API Endpoints', () => {
       
       const response = await mockRequest
         .post('/api/strip-comments')
-        .send({
+        .send<StripDirectoryResponse>({
           directoryPath: fixturesDir,
           recursive: true
         });
@@ -183,7 +268,7 @@ describe('API Endpoints', () => {
     test('should return error for invalid input', async () => {
       const response = await mockRequest
         .post('/api/strip-comments')
-        .send({});
+        .send<ErrorResponse>({});
       
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -196,7 +281,7 @@ describe('API Endpoints', () => {
     test('should return progress information', async () => {
       const response = await mockRequest
         .post('/api/get-progress')
-        .send({
+        .send<ProgressResponse>({
           trackerId: 'test-tracker-id'
         });
       
@@ -213,7 +298,7 @@ describe('API Endpoints', () => {
     test('should return authentication status', async () => {
       const response = await mockRequest
         .post('/api/auth-status')
-        .send({});
+        .send<AuthStatusResponse>({});
       
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
