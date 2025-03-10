@@ -33,7 +33,11 @@ cd comment-stripper-mcp
 npm install
 # or
 yarn install
-# Running the Server
+```
+
+### Running the Server
+
+```bash
 # Development mode
 npm run dev
 # or
@@ -46,13 +50,14 @@ npm start
 yarn build
 yarn start
 ```
+
 By default, the server runs on port 3000. You can configure this through environment variables.
 
 ## Usage
 
 The server accepts MCP compatible requests. Here are some examples of how to use it:
 
-## Using cURL
+### Using cURL
 
 ```bash
 # Strip comments from a text string
@@ -78,7 +83,7 @@ curl -X POST http://localhost:3000/api/strip-comments \
   }'
 ```
 
-## Using the JavaScript Client
+### Using the JavaScript Client
 
 ```javascript
 const { MCPClient } = require('mcp-client');
@@ -102,3 +107,51 @@ async function stripComments() {
 stripComments();
 ```
 
+## API Reference
+
+### Endpoints
+
+- `POST /api/strip-comments`: Main endpoint for all comment stripping operations
+
+### Request Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `text` | string | Optional. Raw code text to be processed |
+| `filePath` | string | Optional. Path to a single file to process |
+| `directoryPath` | string | Optional. Path to a directory to process |
+| `recursive` | boolean | Optional. Whether to recursively process subdirectories (default: true) |
+| `fileTypes` | string[] | Optional. Array of file extensions to process (default: ['js', 'ts', 'vue']) |
+
+### Response Format
+
+```json
+{
+  "success": true,
+  "data": {
+    "original": "// Original code with comments\nconst x = 10;",
+    "stripped": "const x = 10;"
+  }
+}
+```
+
+For directory processing, the response includes details for each processed file.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- [Model Context Protocol](https://modelcontextprotocol.io/) for the API specification
+- All contributors and maintainers
